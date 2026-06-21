@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "medical-imaging-ai-basics"
+version = "0.1.0"
+description = "A practical, clinical-grade toolkit for AI in medical imaging."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Motaz Alqaoud" }]
+requires-python = ">=3.8"
+dependencies = [
+    "pydicom>=2.4.0",
+    "nibabel>=5.0.0",
+    "SimpleITK>=2.3.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "monai>=1.3.0",
+    "matplotlib>=3.7.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "scikit-image>=0.21.0",
+    "tqdm>=4.65.0",
+    "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+notebooks = ["jupyter>=1.0.0", "ipywidgets>=8.0.0"]
+
+[project.urls]
+Homepage = "https://github.com/motazalqaoud/medical-imaging-ai-basics"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

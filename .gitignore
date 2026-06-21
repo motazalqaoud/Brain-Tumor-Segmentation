@@ -1,0 +1,43 @@
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data (never commit patient data)
+data/raw/
+data/processed/
+*.dcm
+*.nii
+*.nii.gz
+*.mha
+*.mhd
+*.nrrd
+
+# Models (use Hugging Face for large models)
+*.pth
+*.pt
+*.onnx
+checkpoints/
+
+# Env
+.env
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
