@@ -27,6 +27,9 @@ data/processed/
 *.onnx
 checkpoints/
 
+# Generated prediction/figure artifacts
+prediction.png
+
 # Env
 .env
 venv/
