@@ -1,0 +1,19 @@
+{
+  "_comment": "Starting point for hyperparameter search. Balanced settings — tune lr, batch, base-filters.",
+  "_tuning_guide": {
+    "lr":           "Try: 1e-4, 5e-4, 1e-3, 3e-3. Lower lr + more epochs generally better.",
+    "batch":        "Try: 4, 8, 16. Larger batch = more stable gradients but needs more VRAM.",
+    "base-filters": "Try: 16, 32, 64. More filters = more capacity but slower + more memory.",
+    "depth":        "Try: 2, 3, 4. Deeper = larger receptive field, more risk of overfitting.",
+    "d-frames":     "Try: 2, 4, 8. Higher = more 3D context but more memory. Match to VRAM.",
+    "image-size":   "Try: 64, 96, 128. Higher = more spatial detail but slower."
+  },
+  "epochs": 100,
+  "batch": 8,
+  "lr": 0.0005,
+  "base-filters": 32,
+  "depth": 3,
+  "image-size": 96,
+  "d-frames": 4,
+  "num-workers": 4
+}

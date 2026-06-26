@@ -25,6 +25,7 @@ import logging
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -104,15 +105,21 @@ def create_dataloaders(data_root: str, batch_size: int, num_workers: int = 0):
     return train_loader, val_loader
 
 
-def train_epoch(model, loader, criterion, optimizer, device):
+def train_epoch(model, loader, criterion, optimizer, device, image_size=64):
     """Train for one epoch."""
     model.train()
     total_loss = 0.0
-    
+
     for batch_idx, batch in enumerate(loader):
         images = batch['image'].to(device)  # (B, 1, H, W)
         masks = batch['mask'].to(device)    # (B, H, W)
-        
+
+        # Resize to target spatial size (cheap on CPU, big speedup)
+        images = F.interpolate(images, size=(image_size, image_size),
+                               mode='bilinear', align_corners=False)
+        masks = F.interpolate(masks.unsqueeze(1).float(), size=(image_size, image_size),
+                              mode='nearest').squeeze(1).long()
+
         # Convert 2D to 3D by stacking frames (pseudo-3D)
         images = images.unsqueeze(2).repeat(1, 1, D_FRAMES, 1, 1)
         masks = masks.unsqueeze(1).repeat(1, D_FRAMES, 1, 1)
@@ -135,17 +142,22 @@ def train_epoch(model, loader, criterion, optimizer, device):
     return total_loss / len(loader)
 
 
-def validate(model, loader, criterion, device, num_classes=4):
+def validate(model, loader, criterion, device, num_classes=4, image_size=64):
     """Validate on validation set."""
     model.eval()
     total_loss = 0.0
     total_dice = 0.0
     class_dices = {i: [] for i in range(num_classes)}
-    
+
     with torch.no_grad():
         for batch in loader:
             images = batch['image'].to(device)  # (B, 1, H, W)
             masks = batch['mask'].to(device)    # (B, H, W)
+
+            images = F.interpolate(images, size=(image_size, image_size),
+                                   mode='bilinear', align_corners=False)
+            masks = F.interpolate(masks.unsqueeze(1).float(), size=(image_size, image_size),
+                                  mode='nearest').squeeze(1).long()
 
             # Convert 2D to 3D
             images = images.unsqueeze(2).repeat(1, 1, D_FRAMES, 1, 1)
@@ -192,8 +204,30 @@ def main():
                         help='Path to checkpoint file to resume training from')
     parser.add_argument('--num-workers', type=int, default=0,
                         help='DataLoader worker processes (0 = main process only, safe for all envs)')
+    parser.add_argument('--image-size', type=int, default=64,
+                        help='Resize images to this spatial size before training (64 is fast on CPU, 128 for GPU)')
+    parser.add_argument('--d-frames', type=int, default=D_FRAMES,
+                        help='Pseudo-3D depth: slices stacked per sample (2=CPU, 4=8GB GPU, 8=16GB GPU)')
+    parser.add_argument('--config', type=str, default=None,
+                        help='Path to a JSON config file — overrides individual flags (see configs/)')
 
     args = parser.parse_args()
+
+    # Load config file if provided — values override argparse defaults
+    if args.config:
+        import json
+        with open(args.config) as f:
+            cfg = json.load(f)
+        for key, val in cfg.items():
+            attr = key.replace('-', '_')
+            if hasattr(args, attr):
+                setattr(args, attr, val)
+            else:
+                logger.warning(f"Config key '{key}' is not a known argument — skipping")
+
+    # Apply d_frames from args (may have been overridden by config)
+    global D_FRAMES
+    D_FRAMES = args.d_frames
 
     # Setup
     device = torch.device(args.device)
@@ -267,6 +301,15 @@ def main():
                 "Use a larger --epochs value to continue training."
             )
 
+    # Model config — saved in every checkpoint so predict3d.py can rebuild the model
+    model_config = {
+        'base_filters': args.base_filters,
+        'depth': args.depth,
+        'num_classes': args.num_classes,
+        'image_size': args.image_size,
+        'd_frames': D_FRAMES,
+    }
+
     # Training loop
     logger.info("Starting training...")
     train_losses, val_losses = [], []
@@ -280,11 +323,12 @@ def main():
         logger.info(f"{'='*60}")
         
         # Train
-        train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
+        train_loss = train_epoch(model, train_loader, criterion, optimizer, device, args.image_size)
         train_losses.append(train_loss)
-        
+
         # Validate
-        val_loss, val_dice, class_dices = validate(model, val_loader, criterion, device)
+        val_loss, val_dice, class_dices = validate(model, val_loader, criterion, device,
+                                                   image_size=args.image_size)
         val_losses.append(val_loss)
         val_dices.append(val_dice)
         
@@ -306,9 +350,10 @@ def main():
                 'val_dice': val_dice,
                 'val_loss': val_loss,
                 'train_loss': train_loss,
+                'model_config': model_config,
             }, ckpt_path)
             logger.info(f"✓ Saved best checkpoint: {ckpt_path}")
-        
+
         # Save latest checkpoint every epoch (safe resume point after any shutdown)
         torch.save({
             'epoch': epoch,
@@ -317,6 +362,7 @@ def main():
             'val_dice': val_dice,
             'val_loss': val_loss,
             'train_loss': train_loss,
+            'model_config': model_config,
         }, ckpt_dir / 'checkpoint_latest.pt')
         logger.info(f"✓ Saved latest checkpoint (epoch {epoch})")
 
@@ -327,6 +373,7 @@ def main():
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'val_dice': val_dice,
+                'model_config': model_config,
             }, ckpt_path)
             logger.info(f"✓ Saved periodic checkpoint: {ckpt_path}")
         
@@ -339,6 +386,11 @@ def main():
                 with torch.no_grad():
                     images = val_batch['image'].to(device)   # (B, 1, H, W)
                     masks = val_batch['mask'].to(device)     # (B, H, W)
+                    images = F.interpolate(images, size=(args.image_size, args.image_size),
+                                           mode='bilinear', align_corners=False)
+                    masks = F.interpolate(masks.unsqueeze(1).float(),
+                                          size=(args.image_size, args.image_size),
+                                          mode='nearest').squeeze(1).long()
                     # Same 2D->pseudo-3D conversion used in train_epoch/validate
                     images_3d = images.unsqueeze(2).repeat(1, 1, D_FRAMES, 1, 1)
                     logits = model(images_3d)

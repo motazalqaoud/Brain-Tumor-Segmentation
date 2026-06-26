@@ -1,0 +1,11 @@
+{
+  "_comment": "GPU with 8GB VRAM (RTX 3070, RTX 4060 Ti, etc.). ~2 min/epoch.",
+  "epochs": 100,
+  "batch": 8,
+  "lr": 0.001,
+  "base-filters": 32,
+  "depth": 3,
+  "image-size": 128,
+  "d-frames": 4,
+  "num-workers": 4
+}

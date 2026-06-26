@@ -1,0 +1,11 @@
+{
+  "_comment": "Safe for CPU-only training. ~7 min/epoch on a modern CPU.",
+  "epochs": 50,
+  "batch": 4,
+  "lr": 0.001,
+  "base-filters": 16,
+  "depth": 2,
+  "image-size": 64,
+  "d-frames": 2,
+  "num-workers": 0
+}

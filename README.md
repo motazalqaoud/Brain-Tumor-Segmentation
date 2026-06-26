@@ -81,32 +81,50 @@ pip install -r requirements.txt
 ### Option A — Run with synthetic data (no download)
 
 ```bash
-# Generate 20 synthetic MRI volumes
 python scripts/generate_sample_data.py --n 20 --size 128
-
-# Train 2D U-Net on synthetic slices
 python scripts/train.py --epochs 30
-
-# Predict with the trained checkpoint
 python scripts/predict.py --checkpoint checkpoints/best_unet.pt
 ```
 
-### Option B — Train on Kaggle brain tumor dataset (12K images)
+### Option B — Train on Kaggle brain tumor dataset
 
 ```bash
-# Download via Kaggle API (see data/README.md)
+# Download dataset (see data/README.md for setup)
 kaggle datasets download -d fernando2rad/brain-tumor-12k-mri-images-w-masks-meta-and-bbox
 unzip *.zip -d data/raw/
 
-# Verify setup (dataset loading, model forward pass, visualization)
+# Verify dataset + model forward pass
 python scripts/test_model.py --data-root data/raw/Images_
 
-# Train 3D Attention U-Net
-python scripts/train3d.py --epochs 50 --batch 4 --data-root data/raw/Images_/Images_
+# Train using a hardware preset (pick one):
+python scripts/train3d.py --config configs/cpu.json     --data-root data/raw/Images_
+python scripts/train3d.py --config configs/gpu_8gb.json --data-root data/raw/Images_
+python scripts/train3d.py --config configs/gpu_16gb.json --data-root data/raw/Images_
 
-# Resume from checkpoint
-python scripts/train3d.py --resume checkpoints/best_model_dice_*.pt --epochs 100
+# Or tune manually:
+python scripts/train3d.py --epochs 100 --batch 8 --lr 5e-4 \
+    --base-filters 32 --depth 3 --image-size 128 --device cuda \
+    --data-root data/raw/Images_
+
+# Resume after interruption:
+python scripts/train3d.py --config configs/gpu_8gb.json \
+    --resume checkpoints/checkpoint_latest.pt --data-root data/raw/Images_
 ```
+
+### Option C — Run inference with a trained checkpoint
+
+```bash
+# On a real image from the dataset:
+python scripts/predict3d.py \
+    --checkpoint checkpoints/best_model_dice_0.XXXX.pt \
+    --image data/raw/Images_/Glioma/T1C+/Gliomas\ T1/image.jpg \
+    --mask  data/raw/Images_/Glioma/T1C+/Gliomas\ T1/image_mask_consensus.png
+
+# Demo without any dataset (synthetic input):
+python scripts/predict3d.py --checkpoint checkpoints/best_model_dice_0.XXXX.pt
+```
+
+Outputs `prediction.png` — a 4-panel figure: input MRI, ground truth overlay, prediction overlay, confidence map.
 
 ---
 

@@ -1,0 +1,11 @@
+{
+  "_comment": "GPU with 16GB+ VRAM (RTX 3090, RTX 4090, A100, etc.). Full resolution training.",
+  "epochs": 150,
+  "batch": 16,
+  "lr": 0.001,
+  "base-filters": 32,
+  "depth": 4,
+  "image-size": 128,
+  "d-frames": 8,
+  "num-workers": 8
+}
