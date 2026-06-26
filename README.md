@@ -1,6 +1,6 @@
-# 🧠 Medical Imaging AI Basics
+# Brain Tumor Segmentation with 3D Deep Learning
 
-> A practical, clinical-grade toolkit for AI in medical imaging.
+> Clinical-grade pipeline for automated brain tumor detection and segmentation from MRI scans.
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-red)](https://pytorch.org)
@@ -9,18 +9,19 @@
 
 ---
 
-## 👋 Who is this for?
+## Who is this for?
 
 This repo is for:
-- Engineers entering **medical AI** who want real, working code (not toy examples)
-- Researchers looking for **clinical-context preprocessing pipelines**
-- Anyone building AI tools for **surgical navigation, diagnostics, or medical devices**
+- Engineers building **brain tumor detection systems** with production-ready code
+- Researchers training **segmentation models on real MRI data** (12K+ images from Kaggle)
+- Medical professionals developing **diagnostic support tools** for neuroradiology
+- Anyone deploying AI for **surgical planning and intraoperative guidance**
 
-This is **not** another generic deep learning tutorial. Every notebook here reflects real challenges from medical imaging in clinical settings.
+This is **not** a toy tutorial. Every component reflects real clinical workflows from neurosurgery and radiology departments.
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 medical-imaging-ai-basics/
@@ -32,95 +33,177 @@ medical-imaging-ai-basics/
 │
 ├── src/
 │   ├── preprocessing/
-│   │   ├── dicom_loader.py                      # DICOM stack → numpy/tensor
-│   │   ├── nifti_loader.py                      # NIfTI loader with metadata
-│   │   └── transforms.py                        # Medical-specific augmentations
+│   │   ├── dicom_loader.py          # DICOM stack → numpy/tensor
+│   │   ├── nifti_loader.py          # NIfTI loader with metadata & affine
+│   │   ├── transforms.py            # Anatomy-aware augmentations
+│   │   └── brain_tumor_loader.py    # Kaggle brain tumor dataset loader
 │   ├── segmentation/
-│   │   ├── unet.py                              # U-Net architecture
-│   │   └── losses.py                            # Dice loss, BCE+Dice combo
+│   │   ├── unet.py                  # 2D U-Net architecture
+│   │   ├── losses.py                # Dice, BCE+Dice, Focal losses
+│   │   ├── unet3d.py                # 3D Attention U-Net (channel + spatial attention)
+│   │   └── losses_advanced.py       # Weighted Dice, Focal, Boundary, Hybrid loss
 │   └── visualization/
-│       └── viewer.py                            # 3-plane viewer (axial/sagittal/coronal)
+│       ├── viewer.py                # 3-plane viewer (axial/sagittal/coronal)
+│       └── visualizer3d.py          # Segmentation comparison & training curve plots
+│
+├── scripts/
+│   ├── generate_sample_data.py      # Synthetic NIfTI volumes (no download needed)
+│   ├── train.py                     # Train 2D U-Net on synthetic data
+│   ├── train3d.py                   # Train 3D Attention U-Net on Kaggle dataset
+│   ├── test_model.py                # End-to-end test (dataset → model → viz)
+│   └── predict.py                   # Run a trained checkpoint on an image
 │
 ├── data/
-│   └── samples/                                 # Sample slices for testing
+│   ├── README.md                    # How to get the datasets
+│   └── samples/                     # Synthetic NIfTI pairs (Option A)
 │
 ├── docs/
-│   └── clinical_context.md                      # Why these choices matter in real hospitals
+│   └── clinical_context.md          # Why these choices matter in real hospitals
 │
+├── pyproject.toml
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
 ```bash
 git clone https://github.com/motazalqaoud/medical-imaging-ai-basics.git
 cd medical-imaging-ai-basics
 pip install -r requirements.txt
-jupyter notebook notebooks/
+```
+
+### Option A — Run with synthetic data (no download)
+
+```bash
+# Generate 20 synthetic MRI volumes
+python scripts/generate_sample_data.py --n 20 --size 128
+
+# Train 2D U-Net on synthetic slices
+python scripts/train.py --epochs 30
+
+# Predict with the trained checkpoint
+python scripts/predict.py --checkpoint checkpoints/best_unet.pt
+```
+
+### Option B — Train on Kaggle brain tumor dataset (12K images)
+
+```bash
+# Download via Kaggle API (see data/README.md)
+kaggle datasets download -d fernando2rad/brain-tumor-12k-mri-images-w-masks-meta-and-bbox
+unzip *.zip -d data/raw/
+
+# Verify setup (dataset loading, model forward pass, visualization)
+python scripts/test_model.py --data-root data/raw/Images_
+
+# Train 3D Attention U-Net
+python scripts/train3d.py --epochs 50 --batch 4 --data-root data/raw/Images_/Images_
+
+# Resume from checkpoint
+python scripts/train3d.py --resume checkpoints/best_model_dice_*.pt --epochs 100
 ```
 
 ---
 
-## 📓 Notebooks
+## Models
 
-### 1. Load & Visualize Medical Images
-`notebooks/01_load_visualize_medical_images.ipynb`
+### 2D U-Net (`src/segmentation/unet.py`)
 
-- Load DICOM series and NIfTI files
-- Visualize axial, sagittal, and coronal planes
-- Understand voxel spacing, orientation, and metadata
-- Why this matters: wrong spacing = wrong measurements in the OR
+Classic U-Net for slice-level binary tumor segmentation.
 
-### 2. Preprocessing Pipeline
-`notebooks/02_preprocessing_pipeline.ipynb`
+```python
+from src.segmentation import UNet
 
-- Intensity normalization (Z-score, min-max, percentile clipping)
-- Resampling to isotropic voxel spacing
-- Data augmentation for medical images (no random flipping of anatomy!)
-- Why this matters: preprocessing failures are the #1 reason medical AI breaks in production
+model = UNet(in_channels=1, n_classes=1, base_filters=32, depth=4)
+# Input: (B, 1, H, W)  →  Output: (B, 1, H, W) logits
+```
 
-### 3. Tumor Segmentation with U-Net
-`notebooks/03_tumor_segmentation_unet.ipynb`
+### 3D Attention U-Net (`src/segmentation/unet3d.py`)
 
-- Build U-Net from scratch in PyTorch
-- Train on sample breast MRI slices
-- Dice loss + evaluation metrics
-- Why this matters: segmentation is the foundation of surgical navigation
+Volumetric model with channel attention (SE blocks) and spatial attention gates.
+Supports multi-class output for WHO tumor classification.
+
+```python
+from src.segmentation import AttentionUNet3D
+
+model = AttentionUNet3D(in_channels=1, num_classes=4, base_filters=32, depth=4)
+# Input: (B, 1, D, H, W)  →  Output: (B, 4, D, H, W) logits
+# Classes: 0=background, 1=glioma, 2=meningioma, 3=pituitary
+```
 
 ---
 
-## 🔬 Clinical Context
+## Loss Functions
+
+| Loss | Module | Use case |
+|---|---|---|
+| `DiceLoss` | `losses.py` | Binary segmentation |
+| `BCEDiceLoss` | `losses.py` | Binary, faster convergence |
+| `FocalLoss` | `losses.py` | Very small lesions |
+| `WeightedDiceLoss` | `losses_advanced.py` | Multi-class with imbalance |
+| `HybridLoss` | `losses_advanced.py` | Multi-class (Dice + Focal + Boundary) |
+
+---
+
+## Notebooks
+
+### 1. Load & Visualize Brain MRI
+`notebooks/01_load_visualize_medical_images.ipynb`
+
+- Load Kaggle brain tumor MRI dataset (12K+ images)
+- Visualize T1/T2 weighted scans with tumor overlays
+- Extract and inspect bounding boxes and segmentation masks
+
+### 2. Preprocessing Pipeline for Brain MRI
+`notebooks/02_preprocessing_pipeline.ipynb`
+
+- Intensity normalization for T1/T2 weighted images
+- Skull stripping and registration
+- Anatomy-aware augmentation (small rotations, no random flips)
+
+### 3. Brain Tumor Segmentation with U-Net
+`notebooks/03_tumor_segmentation_unet.ipynb`
+
+- Train 2D U-Net on brain MRI images with ground truth masks
+- Multi-class segmentation (glioma, meningioma, pituitary)
+- Evaluate with Dice, Hausdorff distance, and volumetric metrics
+
+---
+
+## Clinical Context
 
 > Most medical AI tutorials miss the clinical reality. Here's what's different about this repo:
 
 | Common Tutorial | This Repo |
 |---|---|
-| Random image flipping | Anatomy-aware augmentation |
-| Pixel normalization only | Voxel spacing + orientation handling |
-| Accuracy metric | Dice score + Hausdorff distance |
-| 2D slices only | 3D volume awareness |
-| Generic datasets | Breast MRI / surgical navigation context |
+| Random image flipping | Anatomy-aware augmentation (no random flips) |
+| RGB normalization only | T1/T2 weighted intensity handling |
+| Pixel accuracy only | Dice + Hausdorff + volumetric metrics |
+| 2D slices only | 3D volumetric model with attention gates |
+| Binary classifier | Multi-class segmentation (WHO tumor types) |
+| Generic datasets | Brain tumor MRI (12K+ clinical images) |
+
+See `docs/clinical_context.md` for the full explanation.
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Tool | Purpose |
 |---|---|
 | `pydicom` | DICOM file loading |
 | `nibabel` | NIfTI file loading |
 | `SimpleITK` | Resampling, registration |
-| `PyTorch` | Deep learning (U-Net) |
+| `PyTorch` | Deep learning (U-Net, 3D Attention U-Net) |
 | `MONAI` | Medical imaging transforms |
 | `matplotlib` | Visualization |
 | `numpy` | Array operations |
 
 ---
 
-## 🧑‍💻 About the Author
+## About the Author
 
 **Motaz Alqaoud, PhD**
 
@@ -129,13 +212,29 @@ jupyter notebook notebooks/
 - GitHub: [@motazalqaoud](https://github.com/motazalqaoud)
 - LinkedIn: [linkedin.com/in/motazalqaoud](https://linkedin.com/in/motazalqaoud)
 
+---
+
+## Roadmap
+
+- [x] Load brain tumor MRI dataset (Kaggle 12K)
+- [x] Preprocessing pipeline for T1/T2 weighted images
+- [x] 2D U-Net segmentation with binary tumor mask
+- [x] 3D Attention U-Net with multi-class output
+- [x] Hybrid loss (Weighted Dice + Focal + Boundary)
+- [x] Kaggle dataset loader with train/val/test split
+- [x] 3D visualization and training curve plots
+- [ ] Evaluate on full Kaggle test set with per-class metrics
+- [ ] BraTS integration and cross-dataset validation
+- [ ] Web interface for tumor detection (Gradio)
+- [ ] ONNX export for deployment
+- [ ] PACS integration (DICOM output)
 
 ---
 
-## 📄 License
+## License
 
 MIT License — use freely, attribution appreciated.
 
 ---
 
-*If this helped you, ⭐ the repo and connect on LinkedIn. Let's build better AI for healthcare.*
+*If this helped you, star the repo and connect on LinkedIn. Let's build better AI for healthcare.*

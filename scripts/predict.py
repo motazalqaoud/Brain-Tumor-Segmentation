@@ -5,23 +5,43 @@ Run a trained U-Net checkpoint on an image and save a visualization.
 
 Examples:
     # Predict on a generated synthetic slice (no input file needed):
-    python predict.py --checkpoint checkpoints/best_unet.pt
+    python scripts/predict.py --checkpoint checkpoints/best_unet.pt
 
     # Predict on a real 2D slice stored as .npy (shape HxW, normalized 0..1):
-    python predict.py --checkpoint checkpoints/best_unet.pt --input slice.npy
+    python scripts/predict.py --checkpoint checkpoints/best_unet.pt --input slice.npy
 """
 
 import argparse
-import os
 import sys
+from pathlib import Path
 
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
-from segmentation.unet import UNet                  # noqa: E402
-from train import _make_slice                       # noqa: E402  (reuse synthetic gen)
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from segmentation.unet import UNet
+
+
+def _make_slice(size=128, seed=None):
+    rng = np.random.default_rng(seed)
+    img = rng.normal(0.15, 0.04, (size, size)).astype(np.float32)
+    mask = np.zeros((size, size), dtype=np.float32)
+    y_g, x_g = np.mgrid[0:size, 0:size]
+
+    tissue = ((y_g - size // 2) ** 2 / (size / 2.3) ** 2 +
+              (x_g - size // 2) ** 2 / (size / 2.3) ** 2) < 1
+    img[tissue] += rng.normal(0.3, 0.05, img[tissue].shape).astype(np.float32)
+
+    cy = rng.integers(size // 4, 3 * size // 4)
+    cx = rng.integers(size // 4, 3 * size // 4)
+    ry, rx = rng.integers(8, 20), rng.integers(8, 20)
+    lesion = ((y_g - cy) ** 2 / ry ** 2 + (x_g - cx) ** 2 / rx ** 2) < 1
+    img[lesion] += rng.uniform(0.25, 0.45)
+    mask[lesion] = 1.0
+
+    img = np.clip(img + rng.normal(0, 0.02, img.shape), 0, 1).astype(np.float32)
+    return img, (mask > 0.5).astype(np.float32)
 
 
 def load_model(checkpoint, device):
@@ -50,7 +70,7 @@ def main():
     if args.input:
         img = np.load(args.input).astype(np.float32)
     else:
-        img, gt = _make_slice(seed=12345)   # demo slice with known ground truth
+        img, gt = _make_slice(seed=12345)
 
     x = torch.from_numpy(img).unsqueeze(0).unsqueeze(0).to(device)
     with torch.no_grad():

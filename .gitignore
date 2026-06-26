@@ -30,6 +30,11 @@ checkpoints/
 # Generated prediction/figure artifacts
 prediction.png
 
+# Runtime artifacts
+training.log
+test_visualizations/
+visualizations/
+
 # Env
 .env
 venv/

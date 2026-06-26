@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "medical-imaging-ai-basics"
-version = "0.1.0"
-description = "A practical, clinical-grade toolkit for AI in medical imaging."
+name = "brain-tumor-segmentation"
+version = "0.2.0"
+description = "Clinical-grade brain tumor segmentation from MRI scans using 3D Attention U-Net."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Motaz Alqaoud" }]

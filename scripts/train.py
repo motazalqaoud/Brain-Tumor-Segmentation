@@ -14,7 +14,6 @@ Examples:
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -22,9 +21,9 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
-from segmentation.unet import UNet                 # noqa: E402
-from segmentation.losses import BCEDiceLoss, dice_coefficient  # noqa: E402
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from segmentation.unet import UNet
+from segmentation.losses import BCEDiceLoss, dice_coefficient
 
 
 # ─── Synthetic dataset (same generative idea as notebook 03) ──────────────────
