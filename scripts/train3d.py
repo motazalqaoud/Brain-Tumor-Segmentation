@@ -106,9 +106,10 @@ def create_dataloaders(data_root: str, batch_size: int, num_workers: int = 0):
 
 
 def train_epoch(model, loader, criterion, optimizer, device, image_size=64):
-    """Train for one epoch."""
+    """Train for one epoch. Returns (avg_loss, avg_glioma_dice)."""
     model.train()
     total_loss = 0.0
+    total_dice = 0.0
 
     for batch_idx, batch in enumerate(loader):
         images = batch['image'].to(device)  # (B, 1, H, W)
@@ -123,23 +124,27 @@ def train_epoch(model, loader, criterion, optimizer, device, image_size=64):
         # Convert 2D to 3D by stacking frames (pseudo-3D)
         images = images.unsqueeze(2).repeat(1, 1, D_FRAMES, 1, 1)
         masks = masks.unsqueeze(1).repeat(1, D_FRAMES, 1, 1)
-        
+
         # Forward pass
         optimizer.zero_grad()
         logits = model(images)
         loss = criterion(logits, masks)
-        
+
         # Backward pass
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
-        
+
         total_loss += loss.item()
-        
+        # Track glioma Dice (class 1) during training to monitor overfitting
+        with torch.no_grad():
+            preds = torch.argmax(logits, dim=1)
+            total_dice += dice_score(preds, masks, class_id=1)
+
         if (batch_idx + 1) % 10 == 0:
             logger.info(f"  Batch [{batch_idx+1}/{len(loader)}] Loss: {loss.item():.4f}")
     
-    return total_loss / len(loader)
+    return total_loss / len(loader), total_dice / len(loader)
 
 
 def validate(model, loader, criterion, device, num_classes=4, image_size=64):
@@ -323,17 +328,21 @@ def main():
         logger.info(f"{'='*60}")
         
         # Train
-        train_loss = train_epoch(model, train_loader, criterion, optimizer, device, args.image_size)
+        train_loss, train_dice = train_epoch(model, train_loader, criterion, optimizer, device, args.image_size)
         train_losses.append(train_loss)
+        train_dices.append(train_dice)
 
         # Validate
         val_loss, val_dice, class_dices = validate(model, val_loader, criterion, device,
                                                    image_size=args.image_size)
         val_losses.append(val_loss)
         val_dices.append(val_dice)
-        
-        logger.info(f"Train Loss: {train_loss:.4f}")
-        logger.info(f"Val Loss: {val_loss:.4f} | Val Dice: {val_dice:.4f}")
+
+        logger.info(f"Train Loss: {train_loss:.4f} | Train Dice: {train_dice:.4f}")
+        logger.info(f"Val   Loss: {val_loss:.4f} | Val   Dice: {val_dice:.4f}")
+        gap = train_dice - val_dice
+        if gap > 0.15:
+            logger.warning(f"Overfit gap = {gap:.3f} (train-val Dice) — consider regularization")
         logger.info(f"Per-class Dice: {class_dices}")
         
         # Scheduler step
@@ -417,14 +426,15 @@ def main():
             except Exception as e:
                 logger.warning(f"Error in visualization: {e}")
     
-    # Plot training curves
+    # Plot training curves (loss + Dice per epoch, train vs val)
     logger.info("Plotting training curves...")
     fig = visualizer.plot_training_curves(
         train_losses, val_losses, train_dices, val_dices,
         save_path=str(viz_dir / 'training_curves.png')
     )
     plt.close(fig)
-    
+    logger.info(f"Training curves saved to: {viz_dir / 'training_curves.png'}")
+
     logger.info(f"\n{'='*60}")
     logger.info(f"Training complete!")
     logger.info(f"Best Val Dice: {best_val_dice:.4f}")
