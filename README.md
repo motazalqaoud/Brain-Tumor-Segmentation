@@ -1,6 +1,6 @@
-# Brain Tumor Segmentation with 3D Deep Learning
+# Brain Tumor Segmentation — 3D Attention U-Net
 
-> Clinical-grade pipeline for automated brain tumor detection and segmentation from MRI scans.
+> Multi-class segmentation of glioma, meningioma, and pituitary tumors from MRI using 3D Attention U-Net with WHO-grade classification.
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-red)](https://pytorch.org)
@@ -70,8 +70,8 @@ medical-imaging-ai-basics/
 ## Quickstart
 
 ```bash
-git clone https://github.com/motazalqaoud/medical-imaging-ai-basics.git
-cd medical-imaging-ai-basics
+git clone https://github.com/motazalqaoud/AI-Basics_Medical-Imaging.git
+cd AI-Basics_Medical-Imaging
 pip install -r requirements.txt
 ```
 
@@ -214,27 +214,10 @@ See `docs/clinical_context.md` for the full explanation.
 
 ---
 
-## Roadmap
-
-- [x] Load brain tumor MRI dataset (Kaggle 12K)
-- [x] Preprocessing pipeline for T1/T2 weighted images
-- [x] 2D U-Net segmentation with binary tumor mask
-- [x] 3D Attention U-Net with multi-class output
-- [x] Hybrid loss (Weighted Dice + Focal + Boundary)
-- [x] Kaggle dataset loader with train/val/test split
-- [x] 3D visualization and training curve plots
-- [ ] Evaluate on full Kaggle test set with per-class metrics
-- [ ] BraTS integration and cross-dataset validation
-- [ ] Web interface for tumor detection (Gradio)
-- [ ] ONNX export for deployment
-- [ ] PACS integration (DICOM output)
-
----
-
 ## License
 
 MIT License — use freely, attribution appreciated.
 
 ---
 
-*If this helped you, star the repo and connect on LinkedIn. Let's build better AI for healthcare.*
+*Connect on [LinkedIn](https://linkedin.com/in/motazalqaoud) or open an issue for questions and collaboration.*
