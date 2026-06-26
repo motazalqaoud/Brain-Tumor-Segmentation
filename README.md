@@ -50,11 +50,15 @@ Brain-Tumor-Segmentation/
 │       └── visualizer3d.py          # Segmentation comparison & training curve plots
 │
 ├── scripts/
-│   ├── generate_sample_data.py      # Synthetic NIfTI volumes (no download needed)
-│   ├── train.py                     # Train 2D U-Net on synthetic data
 │   ├── train3d.py                   # Train 3D Attention U-Net on Kaggle dataset
-│   ├── test_model.py                # End-to-end test (dataset → model → viz)
-│   └── predict.py                   # Run a trained checkpoint on an image
+│   ├── predict3d.py                 # Inference with a trained checkpoint
+│   └── test_model.py                # End-to-end verification (dataset → model → viz)
+│
+├── configs/
+│   ├── cpu.json                     # CPU training preset (~7 min/epoch)
+│   ├── gpu_8gb.json                 # 8GB GPU preset (~2 min/epoch)
+│   ├── gpu_16gb.json                # 16GB+ GPU preset (~45 sec/epoch)
+│   └── hypertune.json               # Hyperparameter tuning starting point
 │
 ├── data/
 │   ├── README.md                    # How to get the datasets
@@ -63,6 +67,7 @@ Brain-Tumor-Segmentation/
 ├── docs/
 │   └── design_decisions.md       # Why standard ML assumptions break on MRI data
 │
+├── run.py                           # Single entry point: setup / train / predict / results
 ├── pyproject.toml
 ├── requirements.txt
 └── README.md
@@ -78,53 +83,93 @@ cd Brain-Tumor-Segmentation
 pip install -r requirements.txt
 ```
 
-### Option A — Run with synthetic data (no download)
+### Step 1 — Setup (download dataset, verify everything)
 
 ```bash
-python scripts/generate_sample_data.py --n 20 --size 128
-python scripts/train.py --epochs 30
-python scripts/predict.py --checkpoint checkpoints/best_unet.pt
+python run.py setup
 ```
 
-### Option B — Train on Kaggle brain tumor dataset
+This will walk you through the Kaggle API key, download the 12K brain tumor dataset, and verify the model loads correctly. [Full dataset instructions →](data/README.md)
+
+### Step 2 — Train
 
 ```bash
-# Download dataset (see data/README.md for setup)
-kaggle datasets download -d fernando2rad/brain-tumor-12k-mri-images-w-masks-meta-and-bbox
-unzip *.zip -d data/raw/
+python run.py train
+```
 
-# Verify dataset + model forward pass
-python scripts/test_model.py --data-root data/raw/Images_
+Hardware is auto-detected. CPU, 8GB GPU, and 16GB GPU each get appropriate settings automatically. You'll see an estimated training time before it starts and can confirm or cancel.
 
-# Train using a hardware preset (pick one):
-python scripts/train3d.py --config configs/cpu.json     --data-root data/raw/Images_
+### Step 3 — Run inference
+
+```bash
+# Auto-picks best checkpoint and a real image from the dataset:
+python run.py predict
+
+# Or specify your own image + ground truth mask:
+python run.py predict --image path/to/image.jpg --mask path/to/mask.png
+```
+
+Saves `prediction.png` — a 4-panel figure: input MRI / ground truth / prediction (colour-coded per class) / confidence map.
+
+### Step 4 — Generate all results
+
+```bash
+python run.py results
+```
+
+Runs inference on one sample per tumor type (glioma, meningioma, pituitary), copies training curves, and saves everything to `results/`.
+
+---
+
+## Advanced Usage
+
+### Pick your hardware manually
+
+| Config | Hardware | Approx. time/epoch |
+|---|---|---|
+| `configs/cpu.json` | No GPU | ~7 min |
+| `configs/gpu_8gb.json` | RTX 3070 / 4060 Ti | ~2 min |
+| `configs/gpu_16gb.json` | RTX 3090 / 4090 / A100 | ~45 sec |
+
+```bash
 python scripts/train3d.py --config configs/gpu_8gb.json --data-root data/raw/Images_
-python scripts/train3d.py --config configs/gpu_16gb.json --data-root data/raw/Images_
-
-# Or tune manually:
-python scripts/train3d.py --epochs 100 --batch 8 --lr 5e-4 \
-    --base-filters 32 --depth 3 --image-size 128 --device cuda \
-    --data-root data/raw/Images_
-
-# Resume after interruption:
-python scripts/train3d.py --config configs/gpu_8gb.json \
-    --resume checkpoints/checkpoint_latest.pt --data-root data/raw/Images_
 ```
 
-### Option C — Run inference with a trained checkpoint
+### Resume after interruption
+
+Every epoch saves `checkpoints/checkpoint_latest.pt` automatically.
 
 ```bash
-# On a real image from the dataset:
+python run.py train --resume checkpoints/checkpoint_latest.pt
+```
+
+### Hyperparameter tuning
+
+Edit `configs/hypertune.json` — it contains a `_tuning_guide` section explaining what each parameter affects and suggested search ranges. Then train with it:
+
+```bash
+python scripts/train3d.py --config configs/hypertune.json --data-root data/raw/Images_
+```
+
+Key parameters to tune:
+
+| Parameter | Effect | Try |
+|---|---|---|
+| `lr` | Learning rate | `1e-4`, `5e-4`, `1e-3`, `3e-3` |
+| `batch` | Gradient stability | `4`, `8`, `16` |
+| `base-filters` | Model capacity | `16`, `32`, `64` |
+| `depth` | Receptive field | `2`, `3`, `4` |
+| `image-size` | Spatial resolution | `64`, `96`, `128` |
+
+### Inference with full control
+
+```bash
 python scripts/predict3d.py \
     --checkpoint checkpoints/best_model_dice_0.XXXX.pt \
     --image data/raw/Images_/Glioma/T1C+/Gliomas\ T1/image.jpg \
-    --mask  data/raw/Images_/Glioma/T1C+/Gliomas\ T1/image_mask_consensus.png
-
-# Demo without any dataset (synthetic input):
-python scripts/predict3d.py --checkpoint checkpoints/best_model_dice_0.XXXX.pt
+    --mask  data/raw/Images_/Glioma/T1C+/Gliomas\ T1/image_mask_consensus.png \
+    --out   my_result.png
 ```
-
-Outputs `prediction.png` — a 4-panel figure: input MRI, ground truth overlay, prediction overlay, confidence map.
 
 ---
 
