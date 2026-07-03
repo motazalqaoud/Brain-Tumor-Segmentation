@@ -42,10 +42,15 @@ from segmentation.losses_advanced import HybridLoss, dice_score
 from preprocessing.brain_tumor_loader import BrainTumorDataset
 from visualization.visualizer3d import SegmentationVisualizer
 
-# Setup logging
+# Setup logging — writes to both terminal and training.log
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('training.log', mode='a'),
+    ],
+    force=True,  # clears any pre-existing handlers to avoid duplicate lines
 )
 logger = logging.getLogger(__name__)
 

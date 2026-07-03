@@ -49,17 +49,23 @@ class BrainTumorDataset(Dataset):
     Loads 2D slices and optionally assembles them into 3D volumes.
     """
     
-    # Tumor type to class mapping
-    TUMOR_CLASSES = {
-        'Glioma': 1,
-        'Meningioma': 2,
-        'Pituitary': 3,
+    # Folder name → pixel class ID (pseudo-labels from image-level annotation)
+    # Each WHO tumor category gets its own class. Normal = background only (0).
+    FOLDER_TO_CLASS = {
+        'Normal':                                    0,  # background — no tumor pixels
+        'Gliomas':                                   1,  # Astrocytoma, Glioblastoma, Oligodendroglioma
+        'Meningothelial Tumors':                     2,  # Meningioma
+        'Nerve Sheath Tumors':                       3,  # Schwannoma, Neurocytoma
+        'Embryonic Tumors':                          4,  # Medulloblastoma, DNET
+        'Mixed Neuronal and Neuronal-Glial Tumors':  5,  # Ependymoma, Ganglioglioma
+        'Mesenchymal (Non-Meningothelial Tumors)':   6,  # Hemangiopericytoma
+        'Germ Cell Tumors':                          7,  # Germinoma
     }
-    
+
     # MRI modalities
-    MODALITIES = ['T1', 'T1c', 'T2', 'FLAIR']
-    
-    def __init__(self, root_dir: str, modality: str = 'T1c', 
+    MODALITIES = ['T1', 'T1c', 'T2', 'FLAIR', 'all']
+
+    def __init__(self, root_dir: str, modality: str = 'all',
                  mode: str = 'slice', split: str = 'train',
                  transform=None, volume_size: int = 128):
         """
@@ -102,11 +108,12 @@ class BrainTumorDataset(Dataset):
                     continue
                 
                 # Check if modality matches (handle "T1C+", "T1", "T2", "FLAIR")
-                modality_name = modality_dir.name.lower()
-                modality_query = self.modality.lower()
-                
-                if modality_query not in modality_name:
-                    continue
+                # modality='all' loads every modality without filtering
+                if self.modality.lower() != 'all':
+                    modality_name = modality_dir.name.lower()
+                    modality_query = self.modality.lower()
+                    if modality_query not in modality_name:
+                        continue
                 
                 # Scan subtype directories
                 for subtype_dir in modality_dir.iterdir():
@@ -205,20 +212,22 @@ class BrainTumorDataset(Dataset):
             (self.volume_size, self.volume_size), Image.NEAREST
         ), dtype=np.float32) / 255.0
         
-        # Binary mask (threshold)
-        mask = (mask > 0.5).astype(np.float32)
-        
+        # Multi-class mask: tumor pixels get the class ID for this image's tumor type
+        # (pseudo-label from folder-level annotation — all tumor pixels share the same class)
+        tumor_type = meta.get('tumor_type', 'Unknown')
+        class_id = self.FOLDER_TO_CLASS.get(tumor_type, 0)
+        binary_mask = (mask > 0.5)
+        mask = (binary_mask * class_id).astype(np.int64)  # 0=background, 1/2/3=tumor class
+
         # Convert to tensors
         image = torch.from_numpy(image).unsqueeze(0)  # (1, H, W)
-        mask = torch.from_numpy(mask).long()  # (H, W) with values 0 or 1
-        
+        mask = torch.from_numpy(mask).long()           # (H, W) values in {0,1,2,3}
+
         # Apply transforms
         if self.transform:
             image, mask = self.transform(image, mask)
-        
-        # Get tumor class
-        tumor_type = meta.get('tumor_type', 'Unknown')
-        label = self.TUMOR_CLASSES.get(tumor_type, 0)
+
+        label = class_id
         
         return {
             'image': image,
@@ -226,7 +235,7 @@ class BrainTumorDataset(Dataset):
             'label': label,
             'tumor_type': tumor_type,
             'image_path': img_path,
-            'metadata': meta
+            'metadata': meta,
         }
 
 
