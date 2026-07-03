@@ -305,17 +305,41 @@ Trained for 50 epochs on CPU using the full Kaggle Brain Tumor 12K dataset (8,67
 | Dataset split | 70% train / 15% val / 15% test |
 | Hardware | CPU (~15 min/epoch) |
 
+### Test Set Metrics (1,860 held-out images)
+
+| Class | Test Dice |
+|---|---|
+| **Mean Tumor Dice** | **0.7387** |
+| Background | 0.9917 |
+| Glioma | 0.4713 |
+| Meningioma | 0.6927 |
+| Nerve Sheath | 0.8077 |
+| Embryonic | 0.7535 |
+| Mixed Neuronal | 0.7391 |
+| Mesenchymal | 0.7786 |
+| Germ Cell | 0.9278 |
+
+Glioma scores lowest — expected, since gliomas are the most morphologically heterogeneous tumor category (varying grade, shape, and infiltration pattern), while Germ Cell and Nerve Sheath tumors tend to have more consistent, well-circumscribed shapes.
+
 ### Training Curves
 
 ![Training Curves](results/training_curves.png)
+
+Val Mean Tumor Dice climbs from 0.63 → 0.74 over 50 epochs with the train/val gap staying small throughout — no significant overfitting.
 
 ### Validation Sample
 
 ![Epoch 50 Validation](results/epoch50_validation.png)
 
-### Inference on Unseen Image
+### Inference on Unseen Images
 
-![Glioma Inference](results/glioma_prediction.png)
+| Glioma | Meningioma | Nerve Sheath | Embryonic |
+|---|---|---|---|
+| ![Glioma](results/glioma_prediction.png) | ![Meningioma](results/meningioma_prediction.png) | ![Nerve Sheath](results/nerve_sheath_prediction.png) | ![Embryonic](results/embryonic_prediction.png) |
+
+| Mixed Neuronal | Mesenchymal | Germ Cell |
+|---|---|---|
+| ![Mixed Neuronal](results/mixed_neuronal_prediction.png) | ![Mesenchymal](results/mesenchymal_prediction.png) | ![Germ Cell](results/germ_cell_prediction.png) |
 
 Output from `predict3d.py`: input MRI / tumor prediction overlay / confidence map (colour-coded per WHO class).
 

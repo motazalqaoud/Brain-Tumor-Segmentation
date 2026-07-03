@@ -28,17 +28,25 @@ class SegmentationVisualizer:
     
     # Tumor class colors
     COLORS = {
-        0: [0, 0, 0],           # background (black)
-        1: [1, 0, 0],           # glioma (red)
-        2: [0, 1, 0],           # meningioma (green)
-        3: [0, 0, 1],           # pituitary (blue)
+        0: [0, 0, 0],           # background       (black)
+        1: [1, 0, 0],           # glioma           (red)
+        2: [0, 1, 0],           # meningioma       (green)
+        3: [0, 0, 1],           # nerve sheath     (blue)
+        4: [1, 1, 0],           # embryonic        (yellow)
+        5: [1, 0, 1],           # mixed neuronal   (magenta)
+        6: [0, 1, 1],           # mesenchymal      (cyan)
+        7: [1, 0.6, 0.2],       # germ cell        (orange)
     }
-    
+
     CLASS_NAMES = {
         0: 'Background',
         1: 'Glioma',
         2: 'Meningioma',
-        3: 'Pituitary',
+        3: 'Nerve Sheath',
+        4: 'Embryonic',
+        5: 'Mixed Neuronal',
+        6: 'Mesenchymal',
+        7: 'Germ Cell',
     }
     
     def __init__(self, output_dir: str = 'visualizations'):

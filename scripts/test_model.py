@@ -70,7 +70,7 @@ def main():
     try:
         model = AttentionUNet3D(
             in_channels=1,
-            num_classes=4,
+            num_classes=8,
             base_filters=32,
             depth=3
         ).to(device)

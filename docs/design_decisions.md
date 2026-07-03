@@ -45,13 +45,15 @@ The hybrid loss in this repo (`HybridLoss`) combines:
 
 ---
 
-## 4. Why 4 Output Classes, Not 1
+## 4. Why 8 Output Classes, Not 1
 
 The simplest version of this problem is binary: tumor vs background. That's what most tutorials do.
 
-This repo outputs 4 classes: background, glioma, meningioma, pituitary. The reason is that the three tumor types look different on MRI and have different spatial patterns — a model forced to predict a single "tumor" label has to ignore those differences. A model with 4 classes can learn them.
+This repo outputs 8 classes: background plus 7 WHO tumor categories (Glioma, Meningioma, Nerve Sheath, Embryonic, Mixed Neuronal, Mesenchymal, Germ Cell). Each category looks different on MRI and has a different spatial pattern — a model forced to predict a single "tumor" label has to ignore those differences. A model with 8 classes can learn them.
 
-It also makes the evaluation more honest. A binary model can score well on Dice while consistently misidentifying tumor type. Per-class Dice exposes that.
+It also makes the evaluation more honest. A binary model can score well on Dice while consistently misidentifying tumor type. Per-class Dice exposes that — a model that's great at Glioma and terrible at Germ Cell Tumors can't hide behind a single averaged score.
+
+The dataset only ships binary consensus masks, not per-class masks, so class labels are assigned as pseudo-labels from the folder-level annotation (every tumor pixel in an image from the `Gliomas/` folder gets class 1, etc.). This is weakly-supervised segmentation — the location of the tumor is exact ground truth, the class label is inherited from the image-level category rather than pixel-verified per case.
 
 ---
 

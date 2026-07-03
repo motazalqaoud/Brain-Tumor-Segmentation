@@ -67,9 +67,15 @@ def find_best_checkpoint() -> Path | None:
     return candidates[0] if candidates else CHECKPOINTS / "checkpoint_latest.pt"
 
 
+def _resolve_data_root() -> Path:
+    """Support nested Images_/Images_ directories, matching train3d.py's resolve_data_root."""
+    nested = DATA_ROOT / "Images_"
+    return nested if nested.exists() and nested.is_dir() else DATA_ROOT
+
+
 def find_sample_image(tumor_type: str) -> tuple[Path, Path] | tuple[None, None]:
-    """Find one image+mask pair for a given tumor type."""
-    tumor_dir = DATA_ROOT / tumor_type
+    """Find one image+mask pair for a given tumor type (actual dataset folder name)."""
+    tumor_dir = _resolve_data_root() / tumor_type
     if not tumor_dir.exists():
         return None, None
     for modality_dir in tumor_dir.iterdir():
