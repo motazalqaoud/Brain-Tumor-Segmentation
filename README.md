@@ -57,9 +57,9 @@ Brain-Tumor-Segmentation/
 │   └── test_model.py                # End-to-end verification (dataset → model → viz)
 │
 ├── configs/
-│   ├── cpu.json                     # CPU training preset (~7 min/epoch)
-│   ├── gpu_8gb.json                 # 8GB GPU preset (~2 min/epoch)
-│   ├── gpu_16gb.json                # 16GB+ GPU preset (~45 sec/epoch)
+│   ├── cpu.json                     # CPU training preset (measured: ~43 min/epoch, 8-class, all modalities)
+│   ├── gpu_8gb.json                 # 8GB GPU preset (estimated ~2 min/epoch)
+│   ├── gpu_16gb.json                # 16GB+ GPU preset (estimated ~45 sec/epoch)
 │   └── hypertune.json               # Hyperparameter tuning starting point
 │
 ├── data/
@@ -170,9 +170,9 @@ print(torch.cuda.get_device_name(0))  # Your GPU name
 
 | Config | Hardware | Approx. time/epoch |
 |---|---|---|
-| `configs/cpu.json` | No GPU | ~7 min |
-| `configs/gpu_8gb.json` | RTX 3070 / 4060 Ti | ~2 min |
-| `configs/gpu_16gb.json` | RTX 3090 / 4090 / A100 | ~45 sec |
+| `configs/cpu.json` | No GPU | ~43 min (measured) |
+| `configs/gpu_8gb.json` | RTX 3070 / 4060 Ti | ~2 min (estimated) |
+| `configs/gpu_16gb.json` | RTX 3090 / 4090 / A100 | ~45 sec (estimated) |
 
 ```bash
 python scripts/train3d.py --config configs/gpu_8gb.json --data-root data/raw/Images_
@@ -208,9 +208,9 @@ Key parameters to tune:
 
 ```bash
 python scripts/predict3d.py \
-    --checkpoint checkpoints/best_model_dice_0.XXXX.pt \
-    --image data/raw/Images_/Glioma/T1C+/Gliomas\ T1/image.jpg \
-    --mask  data/raw/Images_/Glioma/T1C+/Gliomas\ T1/image_mask_consensus.png \
+    --checkpoint checkpoints/best_model_dice_0.7350.pt \
+    --image "data/raw/Images_/Images_/Gliomas/Gliomas T1C+/Astrocytoma T1C+/image.jpg" \
+    --mask  "data/raw/Images_/Images_/Gliomas/Gliomas T1C+/Astrocytoma T1C+/image_mask_consensus.png" \
     --out   my_result.png
 ```
 
@@ -303,7 +303,7 @@ Trained for 50 epochs on CPU using the full Kaggle Brain Tumor 12K dataset (8,67
 | Loss | HybridLoss (α=0.5 Dice, β=0.3 Focal, γ=0.2 Boundary) |
 | Classes | 8 (background + 7 WHO tumor categories) |
 | Dataset split | 70% train / 15% val / 15% test |
-| Hardware | CPU (~15 min/epoch) |
+| Hardware | CPU (~43 min/epoch, ~36 hours total) |
 
 ### Test Set Metrics (1,860 held-out images)
 
@@ -385,26 +385,6 @@ See `docs/design_decisions.md` for the full explanation.
 - Senior AI/ML Engineer specializing in medical imaging, segmentation models, and clinical AI systems
 - GitHub: [@motazalqaoud](https://github.com/motazalqaoud)
 - LinkedIn: [linkedin.com/in/motazalqaoud](https://linkedin.com/in/motazalqaoud)
-
----
-
-## Roadmap
-
-- [x] Load brain tumor MRI dataset (Kaggle 12K — all modalities T1/T1C+/T2)
-- [x] Preprocessing pipeline for T1/T2 weighted images
-- [x] 2D U-Net segmentation with binary tumor mask
-- [x] 3D Attention U-Net with 8-class output (background + 7 WHO categories)
-- [x] Hybrid loss (Weighted Dice + Focal + Boundary) with per-class weights
-- [x] Weakly-supervised pseudo-labels from folder-level annotations
-- [x] Kaggle dataset loader with train/val/test split (70/15/15)
-- [x] Resume training with full optimizer + scheduler state
-- [x] Per-class Dice tracking for all 7 tumor categories
-- [x] Automatic test-set evaluation after training
-- [x] 3D visualization and training curve plots
-- [ ] BraTS integration and cross-dataset validation
-- [ ] Web interface for tumor detection (Gradio)
-- [ ] ONNX export for deployment
-- [ ] PACS integration (DICOM output)
 
 ---
 
