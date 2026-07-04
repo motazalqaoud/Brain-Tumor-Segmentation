@@ -243,6 +243,44 @@ model = AttentionUNet3D(in_channels=1, num_classes=8, base_filters=32, depth=4)
 #          4=embryonic, 5=mixed neuronal, 6=mesenchymal, 7=germ cell
 ```
 
+#### Architecture (as trained — `depth=2, base_filters=32`, `configs/cpu.json`)
+
+```mermaid
+flowchart TB
+    A0["Input Volume<br/>(B, 1, D, H, W)<br/>e.g. (B, 1, 2, 64, 64)"]
+
+    A0 --> E0["Encoder L0<br/>Conv3DBlock 1→32 + SE Attention"]
+    E0 -- "skip 0 (32ch, full res)" --> D1
+    E0 --> P1["MaxPool3D (1,2,2)"]
+
+    P1 --> E1["Encoder L1<br/>Conv3DBlock 32→64 + SE Attention"]
+    E1 -- "skip 1 (64ch, 1/2 res)" --> D0
+    E1 --> P2["MaxPool3D (1,2,2)"]
+
+    P2 --> E2["Encoder L2<br/>Conv3DBlock 64→128 + SE Attention"]
+    E2 --> B["Bottleneck<br/>Conv3DBlock 128→128 + Dropout"]
+
+    B --> U0["ConvTranspose3D (1,2,2)<br/>128→64"]
+    U0 --> D0["Attention Gate + Concat (128ch)<br/>Conv3DBlock 128→64"]
+
+    D0 --> U1["ConvTranspose3D (1,2,2)<br/>64→32"]
+    U1 --> D1["Attention Gate + Concat (64ch)<br/>Conv3DBlock 64→32"]
+
+    D1 --> F["Final Conv3D 1×1×1<br/>32 → 8 classes"]
+    F --> O["Output Logits<br/>(B, 8, D, H, W) → argmax → mask"]
+
+    classDef enc fill:#3b82f6,color:#fff,stroke:none
+    classDef dec fill:#10b981,color:#fff,stroke:none
+    classDef bot fill:#f59e0b,color:#fff,stroke:none
+    classDef io fill:#6b7280,color:#fff,stroke:none
+    class E0,E1,E2,P1,P2 enc
+    class U0,U1,D0,D1 dec
+    class B bot
+    class A0,F,O io
+```
+
+Pooling and upsampling only touch H and W (`kernel=(1,2,2)`) — the depth axis is preserved throughout, since pseudo-3D inputs have very small `D` (2–8 frames) that real `(2,2,2)` pooling would collapse. Each `Conv3DBlock` includes a residual connection and squeeze-and-excitation channel attention; each decoder skip connection passes through an attention gate before concatenation. Full block-level diagrams (SE attention, attention gate internals) are on the [Model Architecture wiki page](https://github.com/motazalqaoud/Brain-Tumor-Segmentation/wiki/Model-Architecture).
+
 ---
 
 ## Loss Functions
