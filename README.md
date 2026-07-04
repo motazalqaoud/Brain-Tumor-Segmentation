@@ -258,9 +258,9 @@ flowchart TB
     E1 --> P2["MaxPool3D (1,2,2)"]
 
     P2 --> E2["Encoder L2<br/>Conv3DBlock 64→128 + SE Attention"]
-    E2 --> B["Bottleneck<br/>Conv3DBlock 128→128 + Dropout"]
+    E2 --> Bn["Bottleneck<br/>Conv3DBlock 128→128 + Dropout"]
 
-    B --> U0["ConvTranspose3D (1,2,2)<br/>128→64"]
+    Bn --> U0["ConvTranspose3D (1,2,2)<br/>128→64"]
     U0 --> D0["Attention Gate + Concat (128ch)<br/>Conv3DBlock 128→64"]
 
     D0 --> U1["ConvTranspose3D (1,2,2)<br/>64→32"]
@@ -275,7 +275,7 @@ flowchart TB
     classDef io fill:#6b7280,color:#fff,stroke:none
     class E0,E1,E2,P1,P2 enc
     class U0,U1,D0,D1 dec
-    class B bot
+    class Bn bot
     class A0,F,O io
 ```
 
