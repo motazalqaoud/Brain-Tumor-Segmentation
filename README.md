@@ -1,435 +1,240 @@
-# Brain Tumor Segmentation — 3D Attention U-Net
+---
+title: Brain Tumor Segmentation 3D
+emoji: 🧠
+colorFrom: blue
+colorTo: gray
+sdk: gradio
+sdk_version: 4.44.0
+app_file: app.py
+pinned: false
+license: mit
+---
 
-> 8-class brain tumor segmentation from MRI using 3D Attention U-Net — classifies 7 WHO tumor categories + background from 12K+ real clinical scans.
+# brain-tumor-segmentation-3d
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-red)](https://pytorch.org)
+[![MONAI](https://img.shields.io/badge/MONAI-1.0%2B-green)](https://monai.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![GitHub](https://img.shields.io/badge/GitHub-motazalqaoud-black)](https://github.com/motazalqaoud)
 
----
+> Real 3D volumetric brain tumor segmentation: full NIfTI volumes in, full 3D
+> segmentation masks out. No 2D slice shortcut anywhere in the pipeline.
 
-## What is this about?
+## Why this exists
 
-This project implements a **clinical-grade pipeline for brain tumor segmentation from MRI**, covering the full stack from raw DICOM/NIfTI loading through 3D volumetric training to multi-class prediction.
+The [Brain-Tumor-Segmentation](https://github.com/motazalqaoud/Brain-Tumor-Segmentation)
+repo in this portfolio is called "3D Attention U-Net," but look closely at its
+architecture notes: it operates on "pseudo-3D inputs" with a depth of 2-8
+frames, and pooling only touches height/width. That's 2D images stacked with
+an artificial depth dimension — not a real volumetric scan.
 
-**Key capabilities:**
-- 8-class segmentation: Glioma, Meningioma, Nerve Sheath, Embryonic, Mixed Neuronal, Mesenchymal, Germ Cell + Background
-- Weakly-supervised training on 12,391 real MRI scans — T1, T1C+, T2 modalities, all loaded
-- 3D Attention U-Net (2.2M params) with SE channel attention + spatial attention gates
-- Hybrid loss (Weighted Dice + Focal + Boundary) with per-class weights for severe imbalance
-- Per-class Mean Tumor Dice tracked for all 7 WHO tumor categories during training and evaluation
+This project is the honest version: a genuine 3D Attention U-Net operating on
+full (C, H, W, D) MRI volumes, trained on real multi-modal BraTS data, with
+sliding-window inference over entire scans at evaluation time.
 
-Every engineering decision is driven by clinical requirements — voxel spacing, orientation metadata, and correct intensity handling are treated as first-class concerns, not afterthoughts.
+## The dataset
 
----
+**Medical Segmentation Decathlon, Task01_BrainTumour** — 750 4D MRI volumes
+(484 train / 266 test), sourced from the real BraTS 2016/2017 challenge.
+Four co-registered modalities per subject: FLAIR, T1w, T1gd (contrast-enhanced),
+T2w. Publicly downloadable with no registration wall (unlike raw BraTS),
+via MONAI's built-in downloader — see Setup.
 
-## Repository Structure
+| Region | Raw labels combined | Meaning |
+|---|---|---|
+| TC (Tumor Core) | 1 + 4 | Necrotic core + enhancing tumor |
+| WT (Whole Tumor) | 1 + 2 + 4 | Everything abnormal: core + edema |
+| ET (Enhancing Tumor) | 4 | Actively enhancing tissue only |
+
+These three regions are **nested, not mutually exclusive** (ET ⊂ TC ⊂ WT),
+which is why this is a 3-channel multi-label (independent sigmoid per
+channel) problem rather than a 4-class softmax problem — this is also exactly
+how the official BraTS leaderboard evaluates submissions.
+
+Citation:
+> Simpson, A. L. et al. A large annotated medical image dataset for the
+> development and evaluation of segmentation algorithms. *Medical Segmentation
+> Decathlon* (2019). http://medicaldecathlon.com/
+
+**The dataset is not bundled in this repo** (~7GB compressed). See Setup.
+
+## Clinical context
+
+| Common tutorial | This repo |
+|---|---|
+| 2D slices, sometimes dressed up as "3D" with a fake depth axis | Genuine (H, W, D) volumetric input and output, no shortcut |
+| Random image-level train/test split | Split by **subject** (each 4D file is one patient — no leakage) |
+| Patch-only evaluation | **Sliding-window inference over the full volume** at eval/inference time, since a model that only ever sees training patches still needs to work on a whole clinical scan |
+| Dice score only | Dice **and** 95th-percentile Hausdorff distance (both official BraTS metrics) |
+| One-size-fits-all training config | GPU-memory-aware patch/batch sizing — doesn't assume you know your node's exact GPU in advance |
+
+## Architecture
+
+**3D Attention U-Net** (MONAI `AttentionUnet`, `spatial_dims=3`), 4 input
+channels (the 4 MRI modalities) → 3 output channels (TC/WT/ET), with
+attention gates on each skip connection. This keeps the same architecture
+family already used in this portfolio's other segmentation project, now
+correctly applied to real volumetric data instead of 2D slices.
+
+MONAI's `SegResNet` — the architecture that actually won BraTS 2018 ("3D MRI
+Brain Tumor Segmentation Using Autoencoder Regularization," Myronenko 2018)
+— is a well-documented, strong alternative worth trying on this exact
+dataset as a comparison; swapping `src/model.py`'s `build_model()` to use it
+is a small change if you want to benchmark both.
+
+## Repository structure
 
 ```
-Brain-Tumor-Segmentation/
-│
-├── notebooks/
-│   ├── 01_load_visualize_medical_images.ipynb   # DICOM & NIfTI loading, 3D viz
-│   ├── 02_preprocessing_pipeline.ipynb          # Normalization, augmentation, resampling
-│   └── 03_tumor_segmentation_unet.ipynb         # U-Net from scratch for lesion segmentation
-│
-├── src/
-│   ├── preprocessing/
-│   │   ├── dicom_loader.py          # DICOM stack → numpy/tensor
-│   │   ├── nifti_loader.py          # NIfTI loader with metadata & affine
-│   │   ├── transforms.py            # Anatomy-aware augmentations
-│   │   └── brain_tumor_loader.py    # Kaggle brain tumor dataset loader
-│   ├── segmentation/
-│   │   ├── unet.py                  # 2D U-Net architecture
-│   │   ├── losses.py                # Dice, BCE+Dice, Focal losses
-│   │   ├── unet3d.py                # 3D Attention U-Net (channel + spatial attention)
-│   │   └── losses_advanced.py       # Weighted Dice, Focal, Boundary, Hybrid loss
-│   └── visualization/
-│       ├── viewer.py                # 3-plane viewer (axial/sagittal/coronal)
-│       └── visualizer3d.py          # Segmentation comparison & training curve plots
-│
-├── scripts/
-│   ├── train.py                     # Train 2D U-Net on Kaggle dataset (simpler entry point)
-│   ├── train3d.py                   # Train 3D Attention U-Net on Kaggle dataset
-│   ├── predict.py                   # 2D U-Net inference on a real MRI image
-│   ├── predict3d.py                 # 3D Attention U-Net inference with confidence map
-│   └── test_model.py                # End-to-end verification (dataset → model → viz)
-│
-├── configs/
-│   ├── cpu.json                     # CPU training preset (measured: ~43 min/epoch, 8-class, all modalities)
-│   ├── gpu_8gb.json                 # 8GB GPU preset (estimated ~2 min/epoch)
-│   ├── gpu_16gb.json                # 16GB+ GPU preset (estimated ~45 sec/epoch)
-│   └── hypertune.json               # Hyperparameter tuning starting point
-│
-├── data/
-│   ├── README.md                    # How to get the datasets
-│   └── samples/                     # Synthetic NIfTI pairs (Option A)
-│
-├── docs/
-│   └── design_decisions.md       # Why standard DL assumptions break on MRI data
-│
-├── run.py                           # Single entry point: setup / train / predict / results
-├── pyproject.toml
+brain-tumor-segmentation-3d/
+├── app.py                    # Gradio demo: NIfTI upload -> slice-overlay visualization
+├── data_prep.py               # Downloads Task01_BrainTumour via MONAI's built-in downloader
 ├── requirements.txt
-└── README.md
+├── slurm/
+│   └── train_job.slurm        # SLURM batch script for university/HPC clusters
+├── src/
+│   ├── dataset.py             # MONAI transforms: load, resample, patch-crop, BraTS multi-label conversion
+│   ├── model.py                # 3D Attention U-Net, GPU-memory-aware sizing
+│   ├── train.py                 # Patch-based training + full-volume sliding-window validation
+│   ├── evaluate.py              # Per-region Dice + Hausdorff distance (HD95) on full volumes
+│   └── predict.py               # Single-subject inference -> segmentation NIfTI output
+└── checkpoints/                 # best_model.pth lands here after training (gitignored)
 ```
 
----
-
-## Quickstart
+## Setup
 
 ```bash
-git clone https://github.com/motazalqaoud/Brain-Tumor-Segmentation.git
-cd Brain-Tumor-Segmentation
+git clone https://github.com/motazalqaoud/brain-tumor-segmentation-3d
+cd brain-tumor-segmentation-3d
 pip install -r requirements.txt
 ```
 
-### Step 1 — Setup (download dataset, verify everything)
+Download the dataset (MONAI handles this automatically — ~7GB, needs internet access):
 
 ```bash
-python run.py setup
+python data_prep.py --root_dir ./data
 ```
 
-This will walk you through the Kaggle API key, download the 12K brain tumor dataset, and verify the model loads correctly. [Full dataset instructions →](data/README.md)
+This creates `./data/Task01_BrainTumour/` with `imagesTr/` (484 4D volumes) and
+`labelsTr/` (matching masks).
 
-### Step 2 — Train
+## Training
+
+**On a SLURM/HPC cluster** (recommended — see why below):
+```bash
+sbatch slurm/train_job.slurm
+```
+See that file for one-time environment setup notes (modules, conda env, dataset path).
+
+**Locally, if you have a GPU:**
+```bash
+python src/train.py --data_dir ./data/Task01_BrainTumour --epochs 100
+```
+
+Patch size (128³ or 96³) and batch size are **auto-detected from available GPU
+memory** (`src/dataset.py:recommend_patch_and_batch_size`) — this was written
+without knowing in advance whether a SLURM job would land on a 16GB or 80GB
+node, so it sizes itself down rather than risking an out-of-memory crash
+partway through a multi-hour job. Override with `--patch_size`/`--batch_size`
+once you know your node's GPU and want to tune for throughput instead of
+safety.
+
+**Why GPU/HPC, not a laptop CPU:** 3D convolutions over full medical volumes
+are memory- and compute-heavy in a way 2D image classifiers aren't. A CPU can
+verify the pipeline runs (tiny patch size, a couple of epochs), but a real
+100-epoch run needs a GPU — hours instead of potentially days.
+
+Training uses mixed precision (AMP) by default, Dice loss (sigmoid, per
+nested region), cosine LR annealing, and checkpoints the best model by mean
+validation Dice across all three regions. Full-volume validation via
+sliding-window inference runs every `--val_interval` epochs (default 5).
+
+## Evaluation
 
 ```bash
-python run.py train
+python src/evaluate.py --data_dir ./data/Task01_BrainTumour --checkpoint checkpoints/best_model.pth
 ```
 
-Hardware is auto-detected. CPU, 8GB GPU, and 16GB GPU each get appropriate settings automatically. You'll see an estimated training time before it starts and can confirm or cancel.
+Reports, on full held-out volumes (sliding-window inference, not patches):
+- Per-region Dice (TC, WT, ET) and mean
+- Per-region 95th-percentile Hausdorff distance (HD95, in mm)
 
-### Step 3 — Run inference
+These are the two standard BraTS leaderboard metrics.
+
+## Inference on a new scan
 
 ```bash
-# Auto-picks best checkpoint and a real image from the dataset:
-python run.py predict
-
-# Or specify your own image + ground truth mask:
-python run.py predict --image path/to/image.jpg --mask path/to/mask.png
+python src/predict.py --image path/to/subject_4mod.nii.gz \
+    --checkpoint checkpoints/best_model.pth --output segmentation.nii.gz
 ```
 
-Saves `prediction.png` — a 4-panel figure: input MRI / ground truth / prediction (colour-coded per class) / confidence map.
+Produces a segmentation NIfTI you can load in 3D Slicer, ITK-SNAP, or any
+NIfTI viewer alongside the original scan. Expects a single 4D NIfTI (H, W, D,
+4) in the MSD layout; if your modalities are four separate files, stack them
+first (see the docstring in `predict.py`).
 
-### Step 4 — Generate all results
+## Running the demo locally
 
 ```bash
-python run.py results
+python app.py
 ```
 
-Runs inference on one sample per tumor type (all 7 WHO categories), copies training curves, and saves everything to `results/`.
+**If `checkpoints/best_model.pth` doesn't exist yet, the app runs in a
+clearly-labeled demo mode**: the full 3D pipeline (NIfTI loading, resampling,
+sliding-window inference over the entire volume) runs for real, but the
+network is untrained, so the segmentation shown isn't meaningful. Train with
+`src/train.py` or `sbatch slurm/train_job.slurm` and the app will
+automatically detect the checkpoint.
 
----
-
-## CUDA Setup (GPU Training)
-
-Training on a GPU is 3–10× faster than CPU. If you have an NVIDIA GPU, follow these steps before running `pip install -r requirements.txt`.
-
-### Step 1 — Install NVIDIA drivers
-
-- **Windows:** [nvidia.com/drivers](https://www.nvidia.com/drivers) → select your GPU → download and install
-- **Linux (Ubuntu):** `sudo apt install nvidia-driver-535` (or latest available), then reboot
-
-Verify: `nvidia-smi` — you should see your GPU name and driver version.
-
-### Step 2 — Install CUDA Toolkit
-
-Download from [developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads).  
-Select your OS → Architecture → Version. Recommended: **CUDA 12.1**.
-
-Verify: `nvcc --version`
-
-### Step 3 — Install PyTorch with CUDA
-
-Replace the PyTorch line in `requirements.txt` is not needed — instead run:
-
-```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements.txt
-```
-
-Verify CUDA is available in Python:
-
-```python
-import torch
-print(torch.cuda.is_available())      # True
-print(torch.cuda.get_device_name(0))  # Your GPU name
-```
-
-### CUDA not available?
-
-`run.py train` and `train3d.py` will **automatically fall back to CPU** if CUDA is not detected. Training will be slower but will work. Use `configs/cpu.json` for appropriate settings.
-
----
-
-## Advanced Usage
-
-### Pick your hardware manually
-
-| Config | Hardware | Approx. time/epoch |
-|---|---|---|
-| `configs/cpu.json` | No GPU | ~43 min (measured) |
-| `configs/gpu_8gb.json` | RTX 3070 / 4060 Ti | ~2 min (estimated) |
-| `configs/gpu_16gb.json` | RTX 3090 / 4090 / A100 | ~45 sec (estimated) |
-
-```bash
-python scripts/train3d.py --config configs/gpu_8gb.json --data-root data/raw/Images_
-```
-
-### Resume after interruption
-
-Every epoch saves `checkpoints/checkpoint_latest.pt` automatically.
-
-```bash
-python run.py train --resume checkpoints/checkpoint_latest.pt
-```
-
-### Hyperparameter tuning
-
-Edit `configs/hypertune.json` — it contains a `_tuning_guide` section explaining what each parameter affects and suggested search ranges. Then train with it:
-
-```bash
-python scripts/train3d.py --config configs/hypertune.json --data-root data/raw/Images_
-```
-
-Key parameters to tune:
-
-| Parameter | Effect | Try |
-|---|---|---|
-| `lr` | Learning rate | `1e-4`, `5e-4`, `1e-3`, `3e-3` |
-| `batch` | Gradient stability | `4`, `8`, `16` |
-| `base-filters` | Model capacity | `16`, `32`, `64` |
-| `depth` | Receptive field | `2`, `3`, `4` |
-| `image-size` | Spatial resolution | `64`, `96`, `128` |
-
-### Inference with full control
-
-```bash
-python scripts/predict3d.py \
-    --checkpoint checkpoints/best_model_dice_0.7350.pt \
-    --image "data/raw/Images_/Images_/Gliomas/Gliomas T1C+/Astrocytoma T1C+/image.jpg" \
-    --mask  "data/raw/Images_/Images_/Gliomas/Gliomas T1C+/Astrocytoma T1C+/image_mask_consensus.png" \
-    --out   my_result.png
-```
-
----
-
-## Models
-
-### 2D U-Net (`src/segmentation/unet.py`)
-
-Classic U-Net for slice-level binary tumor segmentation.
-
-```python
-from src.segmentation import UNet
-
-model = UNet(in_channels=1, n_classes=1, base_filters=32, depth=4)
-# Input: (B, 1, H, W)  →  Output: (B, 1, H, W) logits
-```
-
-### 3D Attention U-Net (`src/segmentation/unet3d.py`)
-
-Volumetric model with channel attention (SE blocks) and spatial attention gates.
-Supports multi-class output for WHO tumor classification.
-
-```python
-from src.segmentation import AttentionUNet3D
-
-model = AttentionUNet3D(in_channels=1, num_classes=8, base_filters=32, depth=4)
-# Input: (B, 1, D, H, W)  →  Output: (B, 8, D, H, W) logits
-# Classes: 0=background, 1=glioma, 2=meningioma, 3=nerve sheath,
-#          4=embryonic, 5=mixed neuronal, 6=mesenchymal, 7=germ cell
-```
-
-#### Architecture (as trained — `depth=2, base_filters=32`, `configs/cpu.json`)
-
-```mermaid
-flowchart TB
-    A0["Input Volume<br/>(B, 1, D, H, W)<br/>e.g. (B, 1, 2, 64, 64)"]
-
-    A0 --> E0["Encoder L0<br/>Conv3DBlock 1→32 + SE Attention"]
-    E0 -- "skip 0 (32ch, full res)" --> D1
-    E0 --> P1["MaxPool3D (1,2,2)"]
-
-    P1 --> E1["Encoder L1<br/>Conv3DBlock 32→64 + SE Attention"]
-    E1 -- "skip 1 (64ch, 1/2 res)" --> D0
-    E1 --> P2["MaxPool3D (1,2,2)"]
-
-    P2 --> E2["Encoder L2<br/>Conv3DBlock 64→128 + SE Attention"]
-    E2 --> Bn["Bottleneck<br/>Conv3DBlock 128→128 + Dropout"]
-
-    Bn --> U0["ConvTranspose3D (1,2,2)<br/>128→64"]
-    U0 --> D0["Attention Gate + Concat (128ch)<br/>Conv3DBlock 128→64"]
-
-    D0 --> U1["ConvTranspose3D (1,2,2)<br/>64→32"]
-    U1 --> D1["Attention Gate + Concat (64ch)<br/>Conv3DBlock 64→32"]
-
-    D1 --> F["Final Conv3D 1×1×1<br/>32 → 8 classes"]
-    F --> O["Output Logits<br/>(B, 8, D, H, W) → argmax → mask"]
-
-    classDef enc fill:#3b82f6,color:#fff,stroke:none
-    classDef dec fill:#10b981,color:#fff,stroke:none
-    classDef bot fill:#f59e0b,color:#fff,stroke:none
-    classDef io fill:#6b7280,color:#fff,stroke:none
-    class E0,E1,E2,P1,P2 enc
-    class U0,U1,D0,D1 dec
-    class Bn bot
-    class A0,F,O io
-```
-
-Pooling and upsampling only touch H and W (`kernel=(1,2,2)`) — the depth axis is preserved throughout, since pseudo-3D inputs have very small `D` (2–8 frames) that real `(2,2,2)` pooling would collapse. Each `Conv3DBlock` includes a residual connection and squeeze-and-excitation channel attention; each decoder skip connection passes through an attention gate before concatenation. Full block-level diagrams (SE attention, attention gate internals) are on the [Model Architecture wiki page](https://github.com/motazalqaoud/Brain-Tumor-Segmentation/wiki/Model-Architecture).
-
----
-
-## Loss Functions
-
-| Loss | Module | Use case |
-|---|---|---|
-| `DiceLoss` | `losses.py` | Binary segmentation |
-| `BCEDiceLoss` | `losses.py` | Binary, faster convergence |
-| `FocalLoss` | `losses.py` | Very small lesions |
-| `WeightedDiceLoss` | `losses_advanced.py` | Multi-class with imbalance |
-| `HybridLoss` | `losses_advanced.py` | Multi-class (Dice + Focal + Boundary) |
-
----
-
-## Notebooks
-
-### 1. Load & Visualize Brain MRI
-`notebooks/01_load_visualize_medical_images.ipynb`
-
-- Load Kaggle brain tumor MRI dataset (12K+ images)
-- Visualize T1/T2 weighted scans with tumor overlays
-- Extract and inspect bounding boxes and segmentation masks
-
-### 2. Preprocessing Pipeline for Brain MRI
-`notebooks/02_preprocessing_pipeline.ipynb`
-
-- Intensity normalization for T1/T2 weighted images
-- Skull stripping and registration
-- Anatomy-aware augmentation (small rotations, no random flips)
-
-### 3. Brain Tumor Segmentation with U-Net
-`notebooks/03_tumor_segmentation_unet.ipynb`
-
-- Train 2D U-Net on brain MRI images with ground truth masks
-- Multi-class segmentation (8 WHO tumor categories)
-- Evaluate with per-class Dice and volumetric metrics
-
----
+Note: CPU-tier Hugging Face Spaces will be slow for 3D sliding-window
+inference (potentially 1-2 minutes per volume). A GPU-tier Space, or running
+locally/on the HPC, is recommended for anything beyond a quick demo.
 
 ## Results
 
-Trained for 50 epochs on CPU using the full Kaggle Brain Tumor 12K dataset (8,673 train / 1,858 val / 1,860 test), all modalities (T1, T1C+, T2).
+**No checkpoint is bundled yet** — training requires the ~7GB dataset (not
+included, see Setup) and GPU compute time. Once trained, run `src/evaluate.py`
+and paste the output here:
 
-### Training Configuration
-
-| Parameter | Value |
-|---|---|
-| Model | 3D Attention U-Net |
-| Parameters | 2.2M |
-| Base filters | 32 |
-| Depth | 2 |
-| Image size | 64×64 |
-| D-frames (pseudo-3D) | 2 |
-| Epochs | 50 |
-| Batch size | 4 |
-| Optimizer | Adam, lr=1e-3 |
-| Scheduler | ReduceLROnPlateau (factor=0.5, patience=5) |
-| Loss | HybridLoss (α=0.5 Dice, β=0.3 Focal, γ=0.2 Boundary) |
-| Classes | 8 (background + 7 WHO tumor categories) |
-| Dataset split | 70% train / 15% val / 15% test |
-| Hardware | CPU (~43 min/epoch, ~36 hours total) |
-
-### Test Set Metrics (1,860 held-out images)
-
-| Class | Test Dice |
-|---|---|
-| **Mean Tumor Dice** | **0.7387** |
-| Background | 0.9917 |
-| Glioma | 0.4713 |
-| Meningioma | 0.6927 |
-| Nerve Sheath | 0.8077 |
-| Embryonic | 0.7535 |
-| Mixed Neuronal | 0.7391 |
-| Mesenchymal | 0.7786 |
-| Germ Cell | 0.9278 |
-
-Glioma scores lowest — expected, since gliomas are the most morphologically heterogeneous tumor category (varying grade, shape, and infiltration pattern), while Germ Cell and Nerve Sheath tumors tend to have more consistent, well-circumscribed shapes.
-
-### Training Curves
-
-![Training Curves](results/training_curves.png)
-
-Val Mean Tumor Dice climbs from 0.63 → 0.74 over 50 epochs with the train/val gap staying small throughout — no significant overfitting.
-
-### Validation Sample
-
-![Epoch 50 Validation](results/epoch50_validation.png)
-
-### Inference on Unseen Images
-
-| Glioma | Meningioma | Nerve Sheath | Embryonic |
-|---|---|---|---|
-| ![Glioma](results/glioma_prediction.png) | ![Meningioma](results/meningioma_prediction.png) | ![Nerve Sheath](results/nerve_sheath_prediction.png) | ![Embryonic](results/embryonic_prediction.png) |
-
-| Mixed Neuronal | Mesenchymal | Germ Cell |
+| Region | Dice | HD95 (mm) |
 |---|---|---|
-| ![Mixed Neuronal](results/mixed_neuronal_prediction.png) | ![Mesenchymal](results/mesenchymal_prediction.png) | ![Germ Cell](results/germ_cell_prediction.png) |
+| TC | *(run evaluate.py)* | *(run evaluate.py)* |
+| WT | *(run evaluate.py)* | *(run evaluate.py)* |
+| ET | *(run evaluate.py)* | *(run evaluate.py)* |
 
-Output from `predict3d.py`: input MRI / tumor prediction overlay / confidence map (colour-coded per WHO class).
+For context, published results on this architecture family and dataset
+report mean Dice scores in the 0.80-0.90 range for WT, somewhat lower (0.70-0.85)
+for TC and ET, which are smaller and harder sub-regions — these are literature
+ranges, not results from this specific checkpoint.
 
----
+## Limitations and disclaimer
 
-## Clinical Context
+**This is a research and portfolio project, not a medical device.** Not
+validated prospectively, not reviewed by a regulatory body, must never be
+used to make or defer an actual diagnosis. BraTS-derived data comes from a
+specific set of institutions and scanner protocols; a model trained only on
+this data should not be assumed to generalize to arbitrary clinical scanners
+without further validation. Any actual diagnosis requires a radiologist and
+the full clinical picture.
 
-> Most medical AI tutorials miss the clinical reality. Here's what's different about this repo:
-
-| Common Tutorial | This Repo |
-|---|---|
-| Random image flipping | Anatomy-aware augmentation (no random flips) |
-| RGB normalization only | T1/T2 weighted intensity handling |
-| Pixel accuracy only | Dice + Hausdorff + volumetric metrics |
-| 2D slices only | 3D volumetric model with attention gates |
-| Binary classifier | Multi-class segmentation (WHO tumor types) |
-| Generic datasets | Brain tumor MRI (12K+ clinical images) |
-
-See `docs/design_decisions.md` for the full explanation.
-
----
-
-## Tech Stack
+## Tech stack
 
 | Tool | Purpose |
 |---|---|
-| `pydicom` | DICOM file loading |
-| `nibabel` | NIfTI file loading |
-| `SimpleITK` | Resampling, registration |
-| `PyTorch` | Deep learning (U-Net, 3D Attention U-Net) |
-| `albumentations` | Image augmentation pipeline |
-| `scikit-image` | Morphological ops and image processing |
-| `matplotlib` | Visualization |
-| `numpy` | Array operations |
+| `MONAI` | Medical imaging transforms, 3D networks, sliding-window inference |
+| `PyTorch` | Deep learning |
+| `nibabel` | NIfTI I/O |
+| `Gradio` | Interactive demo |
+| `matplotlib` | Slice-overlay visualization |
 
----
-
-## About the Author
+## About the author
 
 **Motaz Alqaoud, PhD**
-
 - PhD in Biomedical Engineering with focus on medical image analysis and deep learning
 - Senior AI/ML Engineer specializing in medical imaging, segmentation models, and clinical AI systems
 - GitHub: [@motazalqaoud](https://github.com/motazalqaoud)
 - LinkedIn: [linkedin.com/in/motazalqaoud](https://linkedin.com/in/motazalqaoud)
 
----
-
 ## License
 
-MIT License — use freely, attribution appreciated.
-
----
-
-*Connect on [LinkedIn](https://linkedin.com/in/motazalqaoud) or open an issue for questions and collaboration.*
+MIT — see [LICENSE](LICENSE).
