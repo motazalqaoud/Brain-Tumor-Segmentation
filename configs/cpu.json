@@ -1,0 +1,12 @@
+{
+  "_comment": "CPU training preset. ~43 min/epoch measured on 12K dataset, all modalities. 8-class: background + 7 WHO tumor categories.",
+  "epochs": 50,
+  "batch": 4,
+  "lr": 0.001,
+  "base-filters": 32,
+  "depth": 2,
+  "num-classes": 8,
+  "image-size": 64,
+  "d-frames": 2,
+  "num-workers": 0
+}
