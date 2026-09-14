@@ -1,0 +1,50 @@
+{
+  "name": "Medical Imaging AI — Motaz Alqaoud",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "ms-python.python",
+        "ms-python.black-formatter",
+        "ms-toolsai.jupyter",
+        "ms-toolsai.jupyter-keymap",
+        "ms-toolsai.jupyter-renderers",
+        "njpwerner.autodocstring",
+        "ms-python.pylint",
+        "christian-kohler.path-intellisense",
+        "eamodio.gitlens"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "jupyter.notebookFileRoot": "${workspaceFolder}",
+        "github.copilot.enable": {
+          "*": true
+        }
+      }
+    }
+  },
+
+  "postCreateCommand": "pip install -r requirements.txt --break-system-packages",
+
+  "forwardPorts": [8888],
+
+  "portsAttributes": {
+    "8888": {
+      "label": "Jupyter Notebook",
+      "onAutoForward": "openBrowser"
+    }
+  },
+
+  "remoteEnv": {
+    "PYTHONPATH": "${containerWorkspaceFolder}"
+  }
+}
