@@ -10,144 +10,123 @@ pinned: false
 license: mit
 ---
 
-# brain-tumor-segmentation-3d
+# Brain Tumor Segmentation (3D)
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-red)](https://pytorch.org)
-[![MONAI](https://img.shields.io/badge/MONAI-1.0%2B-green)](https://monai.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![GitHub](https://img.shields.io/badge/GitHub-motazalqaoud-black)](https://github.com/motazalqaoud)
 
-> Real 3D volumetric brain tumor segmentation: full NIfTI volumes in, full 3D
-> segmentation masks out. No 2D slice shortcut anywhere in the pipeline.
+Multi-class brain tumor segmentation from MRI. Give it a 4-modality NIfTI
+scan (FLAIR, T1, T1-contrast, T2) and it segments the tumor into three
+clinically standard regions: Tumor Core, Whole Tumor, and Enhancing
+Tumor. The model works on the full 3D volume, not individual 2D slices.
 
-## Why this exists
+## Dataset
 
-The [Brain-Tumor-Segmentation](https://github.com/motazalqaoud/Brain-Tumor-Segmentation)
-repo in this portfolio is called "3D Attention U-Net," but look closely at its
-architecture notes: it operates on "pseudo-3D inputs" with a depth of 2-8
-frames, and pooling only touches height/width. That's 2D images stacked with
-an artificial depth dimension — not a real volumetric scan.
-
-This project is the honest version: a genuine 3D Attention U-Net operating on
-full (C, H, W, D) MRI volumes, trained on real multi-modal BraTS data, with
-sliding-window inference over entire scans at evaluation time.
-
-## The dataset
-
-**Medical Segmentation Decathlon, Task01_BrainTumour** — 750 4D MRI volumes
-(484 train / 266 test), sourced from the real BraTS 2016/2017 challenge.
-Four co-registered modalities per subject: FLAIR, T1w, T1gd (contrast-enhanced),
-T2w. Publicly downloadable with no registration wall (unlike raw BraTS),
-via MONAI's built-in downloader — see Setup.
+Trained on the **Medical Segmentation Decathlon, Task01_BrainTumour**
+set -- 750 4D MRI volumes (484 train / 266 test), sourced from the BraTS
+2016/2017 challenge, with four co-registered modalities per subject
+(FLAIR, T1w, T1gd, T2w). Publicly downloadable, no registration wall,
+via MONAI's built-in downloader -- see Setup below.
 
 | Region | Raw labels combined | Meaning |
 |---|---|---|
-| TC (Tumor Core) | 1 + 4 | Necrotic core + enhancing tumor |
-| WT (Whole Tumor) | 1 + 2 + 4 | Everything abnormal: core + edema |
-| ET (Enhancing Tumor) | 4 | Actively enhancing tissue only |
+| TC (Tumor Core) | necrotic core + enhancing tumor | 1 + 4 |
+| WT (Whole Tumor) | everything abnormal: core + edema | 1 + 2 + 4 |
+| ET (Enhancing Tumor) | actively enhancing tissue only | 4 |
 
-These three regions are **nested, not mutually exclusive** (ET ⊂ TC ⊂ WT),
-which is why this is a 3-channel multi-label (independent sigmoid per
-channel) problem rather than a 4-class softmax problem — this is also exactly
-how the official BraTS leaderboard evaluates submissions.
+These three regions are **nested, not mutually exclusive** (ET inside TC
+inside WT), which is why this is a 3-channel multi-label problem rather
+than a 4-class softmax problem -- this is also exactly how the official
+BraTS leaderboard evaluates submissions.
 
 Citation:
 > Simpson, A. L. et al. A large annotated medical image dataset for the
-> development and evaluation of segmentation algorithms. *Medical Segmentation
-> Decathlon* (2019). http://medicaldecathlon.com/
+> development and evaluation of segmentation algorithms. Medical
+> Segmentation Decathlon (2019). http://medicaldecathlon.com/
 
 **The dataset is not bundled in this repo** (~7GB compressed). See Setup.
 
-## Clinical context
+## Design notes
 
-| Common tutorial | This repo |
-|---|---|
-| 2D slices, sometimes dressed up as "3D" with a fake depth axis | Genuine (H, W, D) volumetric input and output, no shortcut |
-| Random image-level train/test split | Split by **subject** (each 4D file is one patient — no leakage) |
-| Patch-only evaluation | **Sliding-window inference over the full volume** at eval/inference time, since a model that only ever sees training patches still needs to work on a whole clinical scan |
-| Dice score only | Dice **and** 95th-percentile Hausdorff distance (both official BraTS metrics) |
-| One-size-fits-all training config | GPU-memory-aware patch/batch sizing — doesn't assume you know your node's exact GPU in advance |
+A few choices worth calling out if you plan to build on this:
+
+- **Real 3D, not slices.** Input and output are full (H, W, D) volumes,
+  never a 2D slice stack.
+- **Split by subject, not by image.** Each 4D file is one patient, so
+  train/val splits never leak the same patient across sets.
+- **Full-volume evaluation.** Sliding-window inference covers the entire
+  scan at eval/inference time, since a model that only ever sees training
+  patches still has to work on a whole clinical scan.
+- **Two metrics, not one.** Dice and 95th-percentile Hausdorff distance --
+  both official BraTS metrics.
+- **GPU-memory-aware sizing.** Patch and batch size auto-adjust to the
+  GPU actually available, instead of assuming a specific card.
 
 ## Architecture
 
-**3D Attention U-Net** (MONAI `AttentionUnet`, `spatial_dims=3`), 4 input
-channels (the 4 MRI modalities) → 3 output channels (TC/WT/ET), with
-attention gates on each skip connection. This keeps the same architecture
-family already used in this portfolio's other segmentation project, now
-correctly applied to real volumetric data instead of 2D slices.
+**3D Attention U-Net** (MONAI AttentionUnet, spatial_dims=3), 4 input
+channels (the 4 MRI modalities) to 3 output channels (TC/WT/ET), with
+attention gates on each skip connection.
 
-MONAI's `SegResNet` — the architecture that actually won BraTS 2018 ("3D MRI
-Brain Tumor Segmentation Using Autoencoder Regularization," Myronenko 2018)
-— is a well-documented, strong alternative worth trying on this exact
-dataset as a comparison; swapping `src/model.py`'s `build_model()` to use it
-is a small change if you want to benchmark both.
+MONAI's SegResNet -- the architecture that won BraTS 2018 (Myronenko,
+2018) -- is a well-documented, strong alternative worth trying on this
+exact dataset; swapping src/model.py's build_model() to use it is a
+small change if you want to compare both.
 
 ## Repository structure
 
 ```
 brain-tumor-segmentation-3d/
-├── app.py                    # Gradio demo: NIfTI upload -> slice-overlay visualization
-├── data_prep.py               # Downloads Task01_BrainTumour via MONAI's built-in downloader
-├── requirements.txt
-├── slurm/
-│   └── train_job.slurm        # SLURM batch script for university/HPC clusters
-├── src/
-│   ├── dataset.py             # MONAI transforms: load, resample, patch-crop, BraTS multi-label conversion
-│   ├── model.py                # 3D Attention U-Net, GPU-memory-aware sizing
-│   ├── train.py                 # Patch-based training + full-volume sliding-window validation
-│   ├── evaluate.py              # Per-region Dice + Hausdorff distance (HD95) on full volumes
-│   └── predict.py               # Single-subject inference -> segmentation NIfTI output
-└── checkpoints/                 # best_model.pth lands here after training (gitignored)
+app.py               Gradio demo: NIfTI upload -> segmentation overlay
+data_prep.py          Downloads Task01_BrainTumour (MONAI downloader)
+requirements.txt
+slurm/train_job.slurm SLURM batch script, for GPU clusters that use it
+src/
+  dataset.py          Transforms: load, resample, crop, label conversion
+  model.py            3D Attention U-Net, GPU-memory-aware sizing
+  train.py            Training + full-volume sliding-window validation
+  evaluate.py         Per-region Dice + Hausdorff distance on full volumes
+  predict.py          Single-subject inference -> segmentation NIfTI
+checkpoints/           best_model.pth lands here after training (gitignored)
 ```
 
 ## Setup
 
 ```bash
-git clone https://github.com/motazalqaoud/brain-tumor-segmentation-3d
-cd brain-tumor-segmentation-3d
+git clone https://github.com/motazalqaoud/Brain-Tumor-Segmentation
+cd Brain-Tumor-Segmentation
 pip install -r requirements.txt
 ```
 
-Download the dataset (MONAI handles this automatically — ~7GB, needs internet access):
+Download the dataset (handled automatically -- ~7GB, needs internet access):
 
 ```bash
 python data_prep.py --root_dir ./data
 ```
 
-This creates `./data/Task01_BrainTumour/` with `imagesTr/` (484 4D volumes) and
-`labelsTr/` (matching masks).
+This creates ./data/Task01_BrainTumour/ with imagesTr/ (484 4D volumes)
+and labelsTr/ (matching masks).
 
 ## Training
 
-**On a SLURM/HPC cluster** (recommended — see why below):
 ```bash
-sbatch slurm/train_job.slurm
-```
-See that file for one-time environment setup notes (modules, conda env, dataset path).
-
-**Locally, if you have a GPU:**
-```bash
-python src/train.py --data_dir ./data/Task01_BrainTumour --epochs 100
+python src/train.py --data_dir ./data/Task01_BrainTumour --epochs 150
 ```
 
-Patch size (128³ or 96³) and batch size are **auto-detected from available GPU
-memory** (`src/dataset.py:recommend_patch_and_batch_size`) — this was written
-without knowing in advance whether a SLURM job would land on a 16GB or 80GB
-node, so it sizes itself down rather than risking an out-of-memory crash
-partway through a multi-hour job. Override with `--patch_size`/`--batch_size`
-once you know your node's GPU and want to tune for throughput instead of
-safety.
+Needs a GPU with at least 8-16GB VRAM for a real run; patch size and
+batch size auto-detect from whatever GPU is available (see dataset.py's
+recommend_patch_and_batch_size), so it will not crash from running out
+of memory partway through a multi-hour job -- override with
+--patch_size/--batch_size once you know your GPU and want to tune for
+throughput instead of safety. A CPU can verify the pipeline runs (tiny
+patch size, a couple of epochs), but a full run needs a GPU.
 
-**Why GPU/HPC, not a laptop CPU:** 3D convolutions over full medical volumes
-are memory- and compute-heavy in a way 2D image classifiers aren't. A CPU can
-verify the pipeline runs (tiny patch size, a couple of epochs), but a real
-100-epoch run needs a GPU — hours instead of potentially days.
+If you have access to a SLURM-managed GPU cluster, `slurm/train_job.slurm`
+is a ready-to-edit batch script; submit with `sbatch slurm/train_job.slurm`
+after editing the module names and paths to match your cluster.
 
-Training uses mixed precision (AMP) by default, Dice loss (sigmoid, per
-nested region), cosine LR annealing, and checkpoints the best model by mean
+Training uses mixed precision (AMP), Dice loss (sigmoid, per nested
+region), cosine LR annealing, and checkpoints the best model by mean
 validation Dice across all three regions. Full-volume validation via
-sliding-window inference runs every `--val_interval` epochs (default 5).
+sliding-window inference runs every --val_interval epochs (default 5).
 
 ## Evaluation
 
@@ -155,11 +134,10 @@ sliding-window inference runs every `--val_interval` epochs (default 5).
 python src/evaluate.py --data_dir ./data/Task01_BrainTumour --checkpoint checkpoints/best_model.pth
 ```
 
-Reports, on full held-out volumes (sliding-window inference, not patches):
-- Per-region Dice (TC, WT, ET) and mean
-- Per-region 95th-percentile Hausdorff distance (HD95, in mm)
-
-These are the two standard BraTS leaderboard metrics.
+Reports, on full held-out volumes (sliding-window inference, not
+patches): per-region Dice (TC, WT, ET) and mean, plus per-region
+95th-percentile Hausdorff distance (HD95, mm) -- the two standard
+BraTS leaderboard metrics.
 
 ## Inference on a new scan
 
@@ -168,10 +146,10 @@ python src/predict.py --image path/to/subject_4mod.nii.gz \
     --checkpoint checkpoints/best_model.pth --output segmentation.nii.gz
 ```
 
-Produces a segmentation NIfTI you can load in 3D Slicer, ITK-SNAP, or any
-NIfTI viewer alongside the original scan. Expects a single 4D NIfTI (H, W, D,
-4) in the MSD layout; if your modalities are four separate files, stack them
-first (see the docstring in `predict.py`).
+Produces a segmentation NIfTI you can load in 3D Slicer, ITK-SNAP, or
+any NIfTI viewer alongside the original scan. Expects a single 4D
+NIfTI (H, W, D, 4) in the MSD layout; if your modalities are four
+separate files, stack them first (see the docstring in predict.py).
 
 ## Running the demo locally
 
@@ -179,22 +157,14 @@ first (see the docstring in `predict.py`).
 python app.py
 ```
 
-**If `checkpoints/best_model.pth` doesn't exist yet, the app runs in a
-clearly-labeled demo mode**: the full 3D pipeline (NIfTI loading, resampling,
-sliding-window inference over the entire volume) runs for real, but the
-network is untrained, so the segmentation shown isn't meaningful. Train with
-`src/train.py` or `sbatch slurm/train_job.slurm` and the app will
-automatically detect the checkpoint.
-
-Note: CPU-tier Hugging Face Spaces will be slow for 3D sliding-window
-inference (potentially 1-2 minutes per volume). A GPU-tier Space, or running
-locally/on the HPC, is recommended for anything beyond a quick demo.
+If checkpoints/best_model.pth does not exist yet, the app runs in a
+clearly-labeled demo mode: the full 3D pipeline runs for real, but the
+network is untrained, so the segmentation shown is not meaningful.
+Train first and the app auto-detects the checkpoint.
 
 ## Results
 
-**No checkpoint is bundled yet** — training requires the ~7GB dataset (not
-included, see Setup) and GPU compute time. Once trained, run `src/evaluate.py`
-and paste the output here:
+After training, run src/evaluate.py and paste the output here:
 
 | Region | Dice | HD95 (mm) |
 |---|---|---|
@@ -202,39 +172,41 @@ and paste the output here:
 | WT | *(run evaluate.py)* | *(run evaluate.py)* |
 | ET | *(run evaluate.py)* | *(run evaluate.py)* |
 
-For context, published results on this architecture family and dataset
-report mean Dice scores in the 0.80-0.90 range for WT, somewhat lower (0.70-0.85)
-for TC and ET, which are smaller and harder sub-regions — these are literature
-ranges, not results from this specific checkpoint.
+For rough context, published results on similar architectures and this
+dataset family often land around Dice 0.85-0.90 for WT, 0.80-0.85 for TC,
+0.70-0.80 for ET -- ET is consistently the hardest region across the
+field, since it is the smallest of the three regions. These are
+literature ranges from heavily-tuned, ensembled pipelines, not a
+promise about what this single-model, single-GPU checkpoint will hit.
 
 ## Limitations and disclaimer
 
 **This is a research and portfolio project, not a medical device.** Not
-validated prospectively, not reviewed by a regulatory body, must never be
-used to make or defer an actual diagnosis. BraTS-derived data comes from a
-specific set of institutions and scanner protocols; a model trained only on
-this data should not be assumed to generalize to arbitrary clinical scanners
-without further validation. Any actual diagnosis requires a radiologist and
-the full clinical picture.
+validated prospectively, not reviewed by a regulatory body, must never
+be used to make or defer an actual diagnosis. BraTS-derived data comes
+from a specific set of institutions and scanner protocols; a model
+trained only on this data should not be assumed to generalize to
+arbitrary clinical scanners without further validation. Any actual
+diagnosis requires a radiologist and the full clinical picture.
 
 ## Tech stack
 
 | Tool | Purpose |
 |---|---|
-| `MONAI` | Medical imaging transforms, 3D networks, sliding-window inference |
-| `PyTorch` | Deep learning |
-| `nibabel` | NIfTI I/O |
-| `Gradio` | Interactive demo |
-| `matplotlib` | Slice-overlay visualization |
+| MONAI | Medical imaging transforms, 3D networks, sliding-window inference |
+| PyTorch | Deep learning |
+| nibabel | NIfTI I/O |
+| Gradio | Interactive demo |
+| matplotlib | Slice-overlay visualization |
 
 ## About the author
 
 **Motaz Alqaoud, PhD**
-- PhD in Biomedical Engineering with focus on medical image analysis and deep learning
+- PhD in Biomedical Engineering, focus on medical image analysis and deep learning
 - Senior AI/ML Engineer specializing in medical imaging, segmentation models, and clinical AI systems
 - GitHub: [@motazalqaoud](https://github.com/motazalqaoud)
 - LinkedIn: [linkedin.com/in/motazalqaoud](https://linkedin.com/in/motazalqaoud)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT -- see [LICENSE](LICENSE).
