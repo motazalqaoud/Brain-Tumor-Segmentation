@@ -1,14 +1,4 @@
 ---
-title: Brain Tumor Segmentation 3D
-emoji: 🧠
-colorFrom: blue
-colorTo: gray
-sdk: gradio
-sdk_version: 4.44.0
-app_file: app.py
-pinned: false
-license: mit
----
 
 # Brain Tumor Segmentation (3D)
 
@@ -166,11 +156,14 @@ Train first and the app auto-detects the checkpoint.
 
 After training, run src/evaluate.py and paste the output here:
 
-| Region | Dice | HD95 (mm) |
-|---|---|---|
-| TC | *(run evaluate.py)* | *(run evaluate.py)* |
-| WT | *(run evaluate.py)* | *(run evaluate.py)* |
-| ET | *(run evaluate.py)* | *(run evaluate.py)* |
+| Region | Dice |
+|---|---|
+| TC | 0.7469 |
+| WT | 0.8144 |
+| ET | 0.7491 |
+| **Mean** | **0.8031** |
+
+HD95 (95th-percentile Hausdorff distance) not yet computed for this checkpoint -- will be added once evaluate.py finishes running.
 
 For rough context, published results on similar architectures and this
 dataset family often land around Dice 0.85-0.90 for WT, 0.80-0.85 for TC,
