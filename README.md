@@ -1,4 +1,3 @@
----
 
 # Brain Tumor Segmentation (3D)
 
@@ -63,20 +62,49 @@ small change if you want to compare both.
 
 ## Repository structure
 
+This repo contains two things: the current, real 3D pipeline (what the
+rest of this README describes), and the original project this evolved
+from, kept for reference and reproducibility.
+
 ```
-brain-tumor-segmentation-3d/
-app.py               Gradio demo: NIfTI upload -> segmentation overlay
-data_prep.py          Downloads Task01_BrainTumour (MONAI downloader)
-requirements.txt
-slurm/train_job.slurm SLURM batch script, for GPU clusters that use it
-src/
-  dataset.py          Transforms: load, resample, crop, label conversion
-  model.py            3D Attention U-Net, GPU-memory-aware sizing
-  train.py            Training + full-volume sliding-window validation
-  evaluate.py         Per-region Dice + Hausdorff distance on full volumes
-  predict.py          Single-subject inference -> segmentation NIfTI
+Brain-Tumor-Segmentation/
+app.py                 Gradio demo: NIfTI upload -> segmentation overlay
+data_prep.py           Downloads Task01_BrainTumour (MONAI downloader)
+requirements.txt, pyproject.toml
+configs/               GPU/CPU training presets (cpu, gpu_8gb, gpu_16gb, hypertune)
+data/                  Dataset download instructions (data not bundled)
+docs/design_decisions.md   Why common deep-learning assumptions break on MRI data
+slurm/train_job.slurm  SLURM batch script, for GPU clusters that use it
+
+src/                   ** Current pipeline (this README) **
+  dataset.py           Transforms: load, resample, crop, label conversion
+  model.py             3D Attention U-Net, GPU-memory-aware sizing
+  train.py             Training + full-volume sliding-window validation
+  evaluate.py          Per-region Dice + Hausdorff distance on full volumes
+  predict.py           Single-subject inference -> segmentation NIfTI
+
+notebooks/             ** Original project (see below) **
+  01_load_visualize_medical_images.ipynb
+  02_preprocessing_pipeline.ipynb
+  03_tumor_segmentation_unet.ipynb
+scripts/               Original training/inference entry points (2D/pseudo-3D)
+src/preprocessing/     DICOM/NIfTI loaders and transforms used by the notebooks
+src/segmentation/      Original U-Net + loss implementations (2D and pseudo-3D)
+src/visualization/     Slice-overlay viewers used by the notebooks
+results/               Prediction images from the original project (see below)
+
 checkpoints/           best_model.pth lands here after training (gitignored)
 ```
+
+**About the two pipelines:** the `notebooks/`, `scripts/`,
+`src/preprocessing/`, `src/segmentation/`, and `src/visualization/`
+directories, along with the images in `results/`, are from an earlier
+version of this project: an 8-class tumor-type classifier (glioma,
+meningioma, nerve sheath, etc.) trained on a different, 2D/pseudo-3D
+pipeline. They are kept for reference. Everything else in this README
+-- the Decathlon TC/WT/ET segmentation model, its training, and its
+results -- describes the current pipeline, in `src/dataset.py`,
+`model.py`, `train.py`, `evaluate.py`, and `predict.py`.
 
 ## Setup
 
