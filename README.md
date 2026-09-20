@@ -156,14 +156,14 @@ Train first and the app auto-detects the checkpoint.
 
 After training, run src/evaluate.py and paste the output here:
 
-| Region | Dice |
-|---|---|
-| TC | 0.7469 |
-| WT | 0.8144 |
-| ET | 0.7491 |
-| **Mean** | **0.8031** |
+| Region | Dice | HD95 (mm) |
+|---|---|---|
+| TC | 0.7915 | 14.18 |
+| WT | 0.8712 | 15.80 |
+| ET | 0.7582 | 7.53 |
+| **Mean** | **0.8069** | -- |
 
-HD95 (95th-percentile Hausdorff distance) not yet computed for this checkpoint -- will be added once evaluate.py finishes running.
+Full sliding-window evaluation on held-out volumes via src/evaluate.py.
 
 For rough context, published results on similar architectures and this
 dataset family often land around Dice 0.85-0.90 for WT, 0.80-0.85 for TC,
