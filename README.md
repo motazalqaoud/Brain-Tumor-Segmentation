@@ -91,19 +91,19 @@ scripts/               Original training/inference entry points (2D/pseudo-3D)
 src/preprocessing/     DICOM/NIfTI loaders and transforms used by the notebooks
 src/segmentation/      Original U-Net + loss implementations (2D and pseudo-3D)
 src/visualization/     Slice-overlay viewers used by the notebooks
-results/               Prediction images from the original project (see below)
+results/               Example prediction image from the current model
 
 checkpoints/           best_model.pth lands here after training (gitignored)
 ```
 
 **About the two pipelines:** the `notebooks/`, `scripts/`,
 `src/preprocessing/`, `src/segmentation/`, and `src/visualization/`
-directories, along with the images in `results/`, are from an earlier
-version of this project: an 8-class tumor-type classifier (glioma,
-meningioma, nerve sheath, etc.) trained on a different, 2D/pseudo-3D
-pipeline. They are kept for reference. Everything else in this README
--- the Decathlon TC/WT/ET segmentation model, its training, and its
-results -- describes the current pipeline, in `src/dataset.py`,
+directories are from an earlier version of this project: an 8-class
+tumor-type classifier (glioma, meningioma, nerve sheath, etc.) trained
+on a different, 2D/pseudo-3D pipeline. They are kept for reference.
+Everything else in this README -- the Decathlon TC/WT/ET segmentation
+model, its training, and its results, including the example image in
+`results/` -- describes the current pipeline, in `src/dataset.py`,
 `model.py`, `train.py`, `evaluate.py`, and `predict.py`.
 
 ## Setup
@@ -181,6 +181,10 @@ network is untrained, so the segmentation shown is not meaningful.
 Train first and the app auto-detects the checkpoint.
 
 ## Results
+
+![TC/WT/ET prediction example](results/tc_wt_et_prediction_example.png)
+
+*FLAIR slice (left), ground truth (center), and this model's prediction (right) for a held-out subject. Yellow = Whole Tumor, orange = Tumor Core, red = Enhancing Tumor.*
 
 After training, run src/evaluate.py and paste the output here:
 
