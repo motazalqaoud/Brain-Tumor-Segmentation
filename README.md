@@ -106,6 +106,38 @@ model, its training, and its results, including the example image in
 `results/` -- describes the current pipeline, in `src/dataset.py`,
 `model.py`, `train.py`, `evaluate.py`, and `predict.py`.
 
+## Pretrained weights
+
+You don't have to train this yourself. The checkpoint behind the numbers in the
+Results section is published:
+
+- **Hugging Face:** [`motazalqaoud/brain-tumor-segmentation-weights`](https://huggingface.co/motazalqaoud/brain-tumor-segmentation-weights)
+- **GitHub Release:** attached to [v2.1.0](https://github.com/motazalqaoud/Brain-Tumor-Segmentation/releases/tag/v2.1.0)
+
+`best_model.pth` is 90.2 MB (3D Attention U-Net, 23,634,533 parameters, trained
+100 epochs, validation mean Dice 0.8031).
+
+```python
+from huggingface_hub import hf_hub_download
+import torch
+
+path = hf_hub_download("motazalqaoud/brain-tumor-segmentation-weights", "best_model.pth")
+ckpt = torch.load(path, map_location="cpu")
+
+# weights live under "model_state_dict", alongside epoch and val_dice_per_region
+state_dict = ckpt["model_state_dict"]
+```
+
+Drop it at `checkpoints/best_model.pth` and the evaluation, inference and demo
+commands below work immediately. Model card, a download CLI and a checkpoint
+verifier live in
+[open-source-model-weights](https://github.com/motazalqaoud/open-source-model-weights).
+
+> Note: the assets on the older `v1.0.0` and `v2.0.0` releases come from
+> earlier, different pipelines (an 8-class WHO tumor-type model, and an earlier
+> segmentation run). They do **not** correspond to the results above -- use
+> `v2.1.0` or the Hugging Face copy.
+
 ## Setup
 
 ```bash
@@ -186,7 +218,8 @@ Train first and the app auto-detects the checkpoint.
 
 *FLAIR slice (left), ground truth (center), and this model's prediction (right) for a held-out subject. Yellow = Whole Tumor, orange = Tumor Core, red = Enhancing Tumor.*
 
-After training, run src/evaluate.py and paste the output here:
+Full sliding-window inference on held-out volumes, using the two official
+BraTS metrics:
 
 | Region | Dice | HD95 (mm) |
 |---|---|---|
