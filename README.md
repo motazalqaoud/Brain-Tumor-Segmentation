@@ -26,6 +26,8 @@ inside WT), which is why this is a 3-channel multi-label problem rather
 than a 4-class softmax problem -- this is also exactly how the official
 BraTS leaderboard evaluates submissions.
 
+![The three BraTS regions are nested: ET inside TC inside WT](docs/nested-regions.svg)
+
 Citation:
 > Simpson, A. L. et al. A large annotated medical image dataset for the
 > development and evaluation of segmentation algorithms. Medical
@@ -59,6 +61,39 @@ MONAI's SegResNet -- the architecture that won BraTS 2018 (Myronenko,
 2018) -- is a well-documented, strong alternative worth trying on this
 exact dataset; swapping src/model.py's build_model() to use it is a
 small change if you want to compare both.
+
+```mermaid
+flowchart TB
+    IN["4-modality MRI volume<br/>FLAIR · T1 · T1gd · T2"]
+    IN --> E1
+
+    E1["Encoder level 1 · 32 ch"] --> EM["Encoder levels 2-4<br/>64 → 128 → 256 ch<br/>stride 2 at each step"]
+    EM --> BN["Bottleneck · 512 ch"]
+    BN --> DM["Decoder levels 4-2<br/>256 → 128 → 64 ch<br/>upsample at each step"]
+    DM --> D1["Decoder level 1 · 32 ch"]
+    D1 --> OUT["3 channels · TC · WT · ET<br/>sigmoid, not softmax"]
+
+    EM -. "skips" .-> AGM{{"Attention<br/>gates ×3"}}
+    AGM --> DM
+    E1 -. "skip" .-> AG1{{"Attention<br/>gate"}}
+    AG1 --> D1
+
+    OUT --> SW["Sliding-window inference<br/>over the whole volume"]
+
+    style AG1 fill:#7c6cf0,color:#fff,stroke:#5548c8
+    style AGM fill:#7c6cf0,color:#fff,stroke:#5548c8
+    style OUT fill:#eef2f7,color:#33415c,stroke:#b8c4d4
+```
+
+The attention gates are what make this an *Attention* U-Net: rather than
+concatenating each skip connection wholesale, the gate learns to suppress the
+parts of the encoder feature map that are irrelevant to the region being
+decoded -- useful here because tumour occupies a small fraction of any brain
+volume, so most of each skip connection is background.
+
+Training uses random patches for throughput, but validation and inference run
+**sliding-window over the entire volume** -- a model that only ever sees
+patches still has to work on a whole clinical scan.
 
 ## Repository structure
 
